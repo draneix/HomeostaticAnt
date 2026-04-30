@@ -26,7 +26,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         night_cooling_rate=0.001,
         sweat_cooling_rate=0.0005,
         replenish_rate=0.1,
-        day_night_cycle_len=1000,
+        day_night_cycle_len=2_000,
         arena_size=15.0,
         num_food=5,
         num_water=5,
@@ -73,13 +73,9 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         # Create action space: 8 for movement + 1 for sweating
         # The 8 movement have a range of (-1, 1)
-        # Sweating is a binary action
-        self.action_space = spaces.Dict(
-            {
-                "movement": spaces.Box(low=-1.0, high=1.0, shape=(8,), dtype=np.float32),
-                "sweat": spaces.Discrete(2),
-            }
-        )
+        # Sweating is a binary action but uses a continuous space for simplicity. For the last action, more than zero means sweat, zero means no sweat.
+        # Initialize the action space
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(9,), dtype=np.float32)
 
         # Override Observation Space to include vision and homeostatic states
         proprio_space = self.observation_space
@@ -89,6 +85,13 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
                 "vision": spaces.Box(  # Vision with RGB and depth
                     low=0,
                     high=255,
+                    shape=(self.image_size[1], self.image_size[0], 4),
+                    dtype=np.uint8,
+                ),
+                "environment": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self.image_size[1], self.image_size[0], 4),
                     dtype=np.uint8,
                 ),
                 "internal_state": spaces.Box(  # Internal variables
@@ -176,7 +179,8 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         # Keep objects within arena bounds (accounting for their size of around 0.5)
         new_x = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
         new_y = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
-        self.model.body_pos[body_id][:2] = [new_x, new_y]
+        self.model.body_pos[body_id][:2] = [new_x, new_y]  # Use body_pos to set position, not qpos which is for the agent since the resources are static
+        # pov_image, _ = self.mux_render(camera_name="pov")
 
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
@@ -239,7 +243,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         if self.sweat_ind > 0.0:
             # "Neon" effect: bright cyan text with a slight offset "glow" if intensity is high
             sweat_color = (255, 255, 0)
-            sweat_text = f"SWEATING: {self.sweat_ind:.2f}"
+            sweat_text = "SWEATING"
 
             # Draw glow (thicker, same color but maybe slightly different position or just thicker)
             cv2.putText(img, sweat_text, (10, 20 + len(stats) * 20), font, scale, sweat_color, thickness + 2)
@@ -273,8 +277,8 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         return img
 
     def step(self, action):
-        physical_action = action["movement"]
-        sweat_action = action["sweat"]
+        physical_action = action[:8]
+        sweat_action = action[8]
 
         # Apply physical action and simulate
         self.do_simulation(physical_action, self.frame_skip)
@@ -289,14 +293,13 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         contact_heat = 0
         respawned_bodies = set()
         ant_pos = self.data.xpos[self.ant_body_id]
-        
+
         # Distance-based detection for all resources (Food, Water, Heat)
         # Check Food
         for body_id in self.food_ids:
             if body_id not in respawned_bodies:
                 food_pos = self.data.xpos[body_id]
                 if np.linalg.norm(ant_pos - food_pos) < 1.0:
-                    print("Touched food")
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -306,7 +309,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             if body_id not in respawned_bodies:
                 water_pos = self.data.xpos[body_id]
                 if np.linalg.norm(ant_pos - water_pos) < 1.0:
-                    print("Touched water")
                     self.thirst += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -317,7 +319,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             heat_pos = self.data.xpos[heat_body_id]
             if np.linalg.norm(ant_pos - heat_pos) < 1.0:
                 contact_heat += 1
-                print("Touch heat")
 
         # Passive decay/gain
         self.hunger -= (self.hunger_decay * self.frame_skip)
@@ -325,16 +326,16 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         # Temperature dynamics
         action_magnitude = np.linalg.norm(physical_action)
-        self.temperature += action_magnitude * self.action_heat_gain_rate
+        self.temperature += (action_magnitude * self.action_heat_gain_rate * self.frame_skip)
         if contact_heat:
-            self.temperature += self.heat_source_gain_rate * 0.1 * contact_heat
+            self.temperature += self.heat_source_gain_rate * contact_heat
 
         # Update sweat visualization (lingering effect for HUD)
         # Sweat is binary
         self.sweat_ind = sweat_action
 
-        if sweat_action > 0:
-            self.temperature -= sweat_action * self.sweat_cooling_rate
+        if sweat_action > 0.0:
+            self.temperature -= self.sweat_cooling_rate
         if is_night:
             self.temperature -= self.night_cooling_rate
 
