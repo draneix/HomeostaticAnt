@@ -1,6 +1,8 @@
 <mujoco model="ant">
   <compiler angle="degree" coordinate="local" inertiafromgeom="true"/>
   <option integrator="RK4" timestep="0.01"/>
+  <!-- Set extent to 15 manually to match arena size. Required for RGBD visual because adding walls inflate the extent. -->
+  <statistic extent="15" center="0 0 0"/>
   <custom>
     <numeric data="0.0 0.0 0.55 1.0 0.0 0.0 0.0 0.0 1.0 0.0 -1.0 0.0 -1.0 0.0 1.0" name="init_qpos"/>
   </custom>
