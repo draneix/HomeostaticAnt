@@ -21,10 +21,10 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=2e-5,
-        heat_source_gain_rate=0.001,
-        night_cooling_rate=0.001,
-        sweat_cooling_rate=0.0005,
+        action_heat_gain_rate=0.001,
+        heat_source_gain_rate=0.01,
+        night_cooling_rate=0.01,
+        sweat_cooling_rate=0.005,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
         arena_size=15.0,
@@ -78,21 +78,15 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(9,), dtype=np.float32)
 
         # Override Observation Space to include vision and homeostatic states
-        proprio_space = self.observation_space
+        # Cannot use default observation space because we added resources in the XML file
         self.observation_space = spaces.Dict(
             {
-                "proprioception": proprio_space,  # Proprioception - body location etc
+                "proprioception": spaces.Box(-np.inf, np.inf, (105,), np.float32),  # Proprioception - body location etc, excluding the resources
                 "vision": spaces.Box(  # Vision with RGB and depth
                     low=0,
-                    high=255,
+                    high=1,
                     shape=(self.image_size[1], self.image_size[0], 4),
-                    dtype=np.uint8,
-                ),
-                "environment": spaces.Box(
-                    low=0,
-                    high=255,
-                    shape=(self.image_size[1], self.image_size[0], 4),
-                    dtype=np.uint8,
+                    dtype=np.float32,
                 ),
                 "internal_state": spaces.Box(  # Internal variables
                     low=-1.0, high=1.0, shape=(3,), dtype=np.float32
@@ -185,14 +179,10 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
         # 105 shape about the body position, velocity, and joint angles
-        proprio_obs = AntEnv._get_obs(self)
+        proprio_obs = AntEnv._get_obs(self)[:105]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
 
         # Render vision observations
-        pov_image = self.mux_render(camera_name="pov")
-        env_image_rgb, env_image_depth = self.mux_render(camera_name="environment")
-
-        # Add visual HUD to the environment image for debugging/monitoring
-        env_image_rgb = self._add_hud(env_image_rgb)
+        pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
 
         # # Environmental state (Day/Night phase)
         # phase = (
@@ -201,8 +191,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         return {
             "proprioception": proprio_obs,
-            "vision": pov_image,
-            "environment":  (env_image_rgb, env_image_depth),
+            "vision": (pov_image_rgb, pov_image_depth),
             "internal_state": np.array(
                 [self.hunger, self.thirst, self.temperature], dtype=np.float32  # internal variables
             ),
@@ -213,7 +202,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         # Copy to avoid modifying the original if it's a view
         img = img.copy()
-        h, w, _ = img.shape
 
         # HUD settings
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -247,8 +235,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
             # Draw glow (thicker, same color but maybe slightly different position or just thicker)
             cv2.putText(img, sweat_text, (10, 20 + len(stats) * 20), font, scale, sweat_color, thickness + 2)
-            # # Draw main text
-            # cv2.putText(img, sweat_text, (10, 20 + len(stats) * 20), font, scale, (255, 255, 255), thickness)
 
         return img
 
@@ -271,6 +257,10 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             # Let's use a fixed value. Default is usually around [0.8, 0.8, 0.8]
             self.model.light_diffuse[0] = [0.9, 0.9, 0.9]
 
+        # Note that rgbd_tuple returns (rgb, depth) which is given by:
+            # RGB: uint8 array of shape (height, width, 3) - this has a range of (0, 255) for each channel
+            # Depth: float32 array of shape (height, width) with depth in meters - this has a range of (0, 1)
+                # Uses Mujoco's depth rendering that it calculates on its own. Closer objects have smaller depth values
         img = self.mujoco_renderer.render(render_mode="rgbd_tuple")
         
         self.mujoco_renderer.camera_id = old_cam_id
@@ -352,7 +342,23 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         if self.render_mode == "human":
             self.render()
 
-        return obs, reward, self.terminated, False, {}
+        # Return the environment image in info for vieweing
+        # Add visual HUD to the environment image for debugging/monitoring
+        # Dont need depth for viewing
+        env_image_rgb, _ = self.mux_render(camera_name="environment")
+        env_image_rgb = self._add_hud(env_image_rgb)
+
+        # Include the HUD image in info for easy recording
+        info = {
+            "environment": env_image_rgb,
+            "internal_state": {
+                "hunger": self.hunger,
+                "thirst": self.thirst,
+                "temperature": self.temperature
+            }
+        }
+
+        return obs, reward, self.terminated, False, info
 
     @property
     def terminated(self):
@@ -367,11 +373,11 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             or abs(self.temperature) > 0.99
         )
         
-        if not is_healthy:
-            print(f"Not healthy at step {self.current_step}: z_pos={z_pos:.2f}")
+        # if not is_healthy:
+        #     print(f"Not healthy at step {self.current_step}: z_pos={z_pos:.2f}")
         
-        if limit_reached:
-            print(f"Homeostatic limit reached at step {self.current_step}:")
-            print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
+        # if limit_reached:
+        #     print(f"Homeostatic limit reached at step {self.current_step}:")
+        #     print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
 
         return (not is_healthy) or limit_reached  
