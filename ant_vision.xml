@@ -8,7 +8,7 @@
   </custom>
   <default>
     <joint armature="1" damping="1" limited="true"/>
-    <geom conaffinity="10" condim="3" density="5.0" friction="1 0.5 0.5" margin="0.01" rgba="0.8 0.6 0.4 1"/>
+    <geom conaffinity="0" condim="3" density="5.0" friction="1 0.5 0.5" margin="0.01" rgba="0.8 0.6 0.4 1"/>
   </default>
   <asset>
     <texture builtin="gradient" height="100" rgb1="1 1 1" rgb2="0 0 0" type="skybox" width="100"/>
@@ -41,8 +41,7 @@
       <geom name="pov_cam_marker" pos="0.25 0 0.1" size="0.1" type="sphere" rgba="0 0 0 1" conaffinity="0" contype="0"/>
       <camera name="pov" pos="0.25 0 0.1" xyaxes="0 -1 0 0 0 1"/>
       
-      <!-- contype 1 (Ant), conaffinity 10 (Collides with Food/Water: 2 | 8) -->
-      <geom name="torso_geom" pos="0 0 0" size="0.25" type="sphere" contype="1" conaffinity="10"/>
+      <geom name="torso_geom" pos="0 0 0" size="0.25" type="sphere"/>
       <joint armature="0" damping="0" limited="false" margin="0.01" name="root" pos="0 0 0" type="free"/>
       <body name="front_left_leg" pos="0 0 0">
         <geom fromto="0.0 0.0 0.0 0.2 0.2 0.0" name="aux_1_geom" size="0.08" type="capsule"/>
