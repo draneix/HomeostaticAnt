@@ -357,6 +357,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
                 "temperature": self.temperature
             }
         }
+        print(self.terminated)
 
         return obs, reward, self.terminated, False, info
 
@@ -380,4 +381,4 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         #     print(f"Homeostatic limit reached at step {self.current_step}:")
         #     print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
 
-        return (not is_healthy) or limit_reached  
+        return bool(not is_healthy) or bool(limit_reached)
