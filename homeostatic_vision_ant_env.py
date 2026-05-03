@@ -21,7 +21,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.001,
+        action_heat_gain_rate=0.0005,
         heat_source_gain_rate=0.01,
         night_cooling_rate=0.01,
         sweat_cooling_rate=0.005,
@@ -31,6 +31,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         num_food=5,
         num_water=5,
         num_heat=3,
+        is_training=False,
         **kwargs,
     ):
         # Resolve absolute path for xml_file
@@ -38,6 +39,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             xml_file = os.path.join(os.getcwd(), xml_file)
 
         self.image_size = image_size
+        self.is_training = is_training
 
         # Homeostatic variables
         self.hunger = 0.0
@@ -113,6 +115,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             num_food,
             num_water,
             num_heat,
+            is_training,
             **kwargs,
         )
 
@@ -135,10 +138,10 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         assert len(ids) == len(names), f"Some bodies not found for names: {names}"
         return ids
 
-    def reset_model(self, is_training=False):
+    def reset_model(self):
         # Override AntEnv.reset_model to handle homeostatic reset
         # This is called by AntEnv.reset
-        if is_training:
+        if self.is_training:
             # During training, we can randomize the initial homeostatic state
             self.hunger = self.np_random.uniform(-(1/6), (1/6))
             self.thirst = self.np_random.uniform(-(1/6), (1/6))
@@ -165,6 +168,9 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         # Randomize resources
         for body_id in self.food_ids + self.water_ids + self.heat_ids:
             self._randomize_object_pos(body_id)
+
+        # Initialize previous drive for the paper's reward formula
+        self.prev_drive = self.hunger**2 + self.thirst**2 + self.temperature**2
 
         return self._get_obs()
 
@@ -337,8 +343,12 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         self.thirst = np.clip(self.thirst, -1.0, 1.0)
         self.temperature = np.clip(self.temperature, -1.0, 1.0)
 
-        # Pure Homeostatic Reward
-        reward = -(self.hunger**2 + self.thirst**2 + self.temperature**2)
+        # Homeostatic Reward (Paper: Reduction in Drive)
+        current_drive = self.hunger**2 + self.thirst**2 + self.temperature**2
+
+        # Scale the reduction by 200 to make it comparable to 1.0 magnitude
+        reward = 100 * (self.prev_drive - current_drive)
+        self.prev_drive = current_drive
 
         obs = self._get_obs()
 
