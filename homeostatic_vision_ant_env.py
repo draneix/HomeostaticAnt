@@ -79,6 +79,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         # Override Observation Space to include vision and homeostatic states
         # Cannot use default observation space because we added resources in the XML file
+        # Vision concatenates to RGBD but not transposing
         self.observation_space = spaces.Dict(
             {
                 "proprioception": spaces.Box(-np.inf, np.inf, (105,), np.float32),  # Proprioception - body location etc, excluding the resources
@@ -183,6 +184,8 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         # Render vision observations
         pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
+        pov_image_rgb = pov_image_rgb.astype(np.float32) / 255.0
+        pov_image = np.concatenate([pov_image_rgb, np.expand_dims(pov_image_depth, axis=-1)], axis=-1)
 
         # # Environmental state (Day/Night phase)
         # phase = (
@@ -191,7 +194,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         return {
             "proprioception": proprio_obs,
-            "vision": (pov_image_rgb, pov_image_depth),
+            "vision": pov_image,
             "internal_state": np.array(
                 [self.hunger, self.thirst, self.temperature], dtype=np.float32  # internal variables
             ),
@@ -357,7 +360,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
                 "temperature": self.temperature
             }
         }
-        print(self.terminated)
 
         return obs, reward, self.terminated, False, info
 

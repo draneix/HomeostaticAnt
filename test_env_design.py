@@ -19,8 +19,8 @@ def test_env_design():
             # Step the environment
             obs, reward, terminated, truncated, info = env.step(action)
 
-            # Extract the POV image (it's already 256x256)
-            pov_image = obs["vision"][0]
+            # Extract the POV image - RGB part only for visualization
+            pov_image = obs["vision"][:, :, :3]
 
             # Convert RGB to BGR for OpenCV display
             pov_bgr = cv2.cvtColor(pov_image, cv2.COLOR_RGB2BGR)
