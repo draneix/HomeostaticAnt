@@ -176,5 +176,4 @@ def train():
 if __name__ == "__main__":
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
-    os.makedirs("tensorboard", exist_ok=True)
     train()
