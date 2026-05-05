@@ -7,6 +7,9 @@ from gymnasium import spaces
 from gymnasium.envs.mujoco.ant_v5 import AntEnv
 from gymnasium.utils import EzPickle
 
+from config import OBS_SPACE_DIM, REWARD_SCALE
+
+
 DEFAULT_CAMERA_CONFIG = {
     "distance": 4.0,
 }
@@ -21,17 +24,18 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.0005,
+        action_heat_gain_rate=0.001,
         heat_source_gain_rate=0.01,
         night_cooling_rate=0.01,
         sweat_cooling_rate=0.005,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
-        arena_size=15.0,
+        arena_size=10.0,
         num_food=5,
         num_water=5,
         num_heat=3,
         is_training=False,
+        max_steps=40_000,
         **kwargs,
     ):
         # Resolve absolute path for xml_file
@@ -40,6 +44,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         self.image_size = image_size
         self.is_training = is_training
+        self.max_steps = max_steps
 
         # Homeostatic variables
         self.hunger = 0.0
@@ -60,6 +65,8 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         self.num_food = num_food
         self.num_water = num_water
         self.num_heat = num_heat
+
+        self._curr_step = 0
 
         # Initialize AntEnv
         # AntEnv v5 parameters
@@ -84,7 +91,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         # Vision concatenates to RGBD but not transposing
         self.observation_space = spaces.Dict(
             {
-                "proprioception": spaces.Box(-np.inf, np.inf, (105,), np.float32),  # Proprioception - body location etc, excluding the resources
+                "proprioception": spaces.Box(-np.inf, np.inf, (OBS_SPACE_DIM,), np.float32),  # Proprioception - body location etc, excluding the resources
                 "vision": spaces.Box(  # Vision with RGB and depth
                     low=0,
                     high=1,
@@ -116,6 +123,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             num_water,
             num_heat,
             is_training,
+            max_steps,
             **kwargs,
         )
 
@@ -151,6 +159,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             self.thirst = 0.0
             self.temperature = 0.0
         self.current_step = 0
+        self._curr_step = 0
         self.sweat_ind = 0.0  # Uncomment if sweat visualization is needed
 
         # Standard Ant reset noise
@@ -170,9 +179,12 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             self._randomize_object_pos(body_id)
 
         # Initialize previous drive for the paper's reward formula
-        self.prev_drive = self.hunger**2 + self.thirst**2 + self.temperature**2
+        self.prev_drive = self._calculate_drive()
 
         return self._get_obs()
+
+    def _calculate_drive(self):
+        return (self.hunger**2 + self.thirst**2 + self.temperature**2)
 
     def _randomize_object_pos(self, body_id):
         if body_id == -1:
@@ -185,8 +197,8 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
-        # 105 shape about the body position, velocity, and joint angles
-        proprio_obs = AntEnv._get_obs(self)[:105]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
+        # OBS_SPACE_DIM shape about the body position, velocity, and joint angles
+        proprio_obs = AntEnv._get_obs(self)[:OBS_SPACE_DIM]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
 
         # Render vision observations
         pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
@@ -278,6 +290,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
     def step(self, action):
         physical_action = action[:8]
         sweat_action = action[8]
+        self._curr_step += 1
 
         # Apply physical action and simulate
         self.do_simulation(physical_action, self.frame_skip)
@@ -344,10 +357,9 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         self.temperature = np.clip(self.temperature, -1.0, 1.0)
 
         # Homeostatic Reward (Paper: Reduction in Drive)
-        current_drive = self.hunger**2 + self.thirst**2 + self.temperature**2
+        current_drive = self._calculate_drive()
 
-        # Scale the reduction by 200 to make it comparable to 1.0 magnitude
-        reward = 100 * (self.prev_drive - current_drive)
+        reward = REWARD_SCALE * (self.prev_drive - current_drive)
         self.prev_drive = current_drive
 
         obs = self._get_obs()
@@ -375,17 +387,16 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
     @property
     def terminated(self):
-        # Check if agent has flipped over
-        z_pos = self.data.qpos[2]
-        is_healthy = 0.27 <= z_pos <= 1.5
-
         # Homeostatic limits check (+/- 1.0)
         limit_reached = (
             abs(self.hunger) > 0.99
             or abs(self.thirst) > 0.99
             or abs(self.temperature) > 0.99
         )
-        
+
+        if self._curr_step >= self.max_steps:
+            return True
+
         # if not is_healthy:
         #     print(f"Not healthy at step {self.current_step}: z_pos={z_pos:.2f}")
         
@@ -393,4 +404,4 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         #     print(f"Homeostatic limit reached at step {self.current_step}:")
         #     print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
 
-        return bool(not is_healthy) or bool(limit_reached)
+        return bool(limit_reached)  # bool(not is_healthy) or 
