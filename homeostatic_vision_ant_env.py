@@ -389,9 +389,9 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
     def terminated(self):
         # Homeostatic limits check (+/- 1.0)
         limit_reached = (
-            abs(self.hunger) > 0.99
-            or abs(self.thirst) > 0.99
-            or abs(self.temperature) > 0.99
+            abs(self.hunger) > 0.99999
+            or abs(self.thirst) > 0.99999
+            or abs(self.temperature) > 0.99999
         )
 
         if self._curr_step >= self.max_steps:
