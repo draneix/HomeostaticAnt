@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 import random
 
 import mujoco
@@ -15,19 +15,19 @@ DEFAULT_CAMERA_CONFIG = {
 }
 
 
-class HomeostaticVisionAntEnv(AntEnv, EzPickle):
+class HomeostaticAntEnv(AntEnv, EzPickle):
     def __init__(
         self,
-        xml_file="ant_vision.xml",
+        xml_file="ant_env.xml",
         frame_skip=4,  # Standard based on atari
         default_camera_config=DEFAULT_CAMERA_CONFIG,
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.001,
-        heat_source_gain_rate=0.01,
-        night_cooling_rate=0.01,
-        sweat_cooling_rate=0.005,
+        action_heat_gain_rate=0.0005,
+        heat_source_gain_rate=0.001,
+        night_cooling_rate=0.001,
+        sweat_cooling_rate=0.002,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
         arena_size=10.0,
@@ -39,8 +39,7 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         **kwargs,
     ):
         # Resolve absolute path for xml_file
-        if not os.path.isabs(xml_file):
-            xml_file = os.path.join(os.getcwd(), xml_file)
+        xml_file = str((Path(__file__).parent / xml_file).resolve())
 
         self.image_size = image_size
         self.is_training = is_training
@@ -67,6 +66,14 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         self.num_heat = num_heat
 
         self._curr_step = 0
+
+        # Check if heat should be added
+        if self.num_heat == 0:
+            print("No heat sources defined. Removing heat dynamics. Ensure that XML file does not include heat bodies and that heat-related parameters are set to zero.")
+            self.action_heat_gain_rate = 0.0
+            self.heat_source_gain_rate = 0.0
+            self.night_cooling_rate = 0.0
+            self.sweat_cooling_rate = 0.0
 
         # Initialize AntEnv
         # AntEnv v5 parameters
@@ -158,9 +165,15 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
             self.hunger = 0.0
             self.thirst = 0.0
             self.temperature = 0.0
+
+        # Add if no heat
+        if self.num_heat == 0:
+            self.temperature = 0.0
+
         self.current_step = 0
         self._curr_step = 0
         self.sweat_ind = 0.0  # Uncomment if sweat visualization is needed
+
 
         # Standard Ant reset noise
         # self.init_qpos includes the x and y coordinates in the first 2 entries, different from observation space which does not
@@ -248,15 +261,6 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         for i, (text, color) in enumerate(stats):
             cv2.putText(img, text, (10, 20 + i * 20), font, scale, color, thickness)
 
-        # Neon Sweat Indicator
-        if self.sweat_ind > 0.0:
-            # "Neon" effect: bright cyan text with a slight offset "glow" if intensity is high
-            sweat_color = (255, 255, 0)
-            sweat_text = "SWEATING"
-
-            # Draw glow (thicker, same color but maybe slightly different position or just thicker)
-            cv2.putText(img, sweat_text, (10, 20 + len(stats) * 20), font, scale, sweat_color, thickness + 2)
-
         return img
 
     def mux_render(self, camera_name):
@@ -271,12 +275,13 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
         is_night = (self.current_step % self.day_night_cycle_len) > (
             self.day_night_cycle_len / 2
         )
-        if is_night:
-            self.model.light_diffuse[0] = [0.1, 0.1, 0.1]  # Dim the light
-        else:
-            # This is tricky because we don't want to keep multiplying by 0.2
-            # Let's use a fixed value. Default is usually around [0.8, 0.8, 0.8]
-            self.model.light_diffuse[0] = [0.9, 0.9, 0.9]
+        if self.num_heat > 0:  # Only adjust lighting if heat sources are present, otherwise it can be confusing if the lighting changes but there are no heat dynamics
+            if is_night:
+                self.model.light_diffuse[0] = [0.1, 0.1, 0.1]  # Dim the light
+            else:
+                # This is tricky because we don't want to keep multiplying by 0.2
+                # Let's use a fixed value. Default is usually around [0.8, 0.8, 0.8]
+                self.model.light_diffuse[0] = [0.9, 0.9, 0.9]
 
         # Note that rgbd_tuple returns (rgb, depth) which is given by:
             # RGB: uint8 array of shape (height, width, 3) - this has a range of (0, 255) for each channel
@@ -348,6 +353,9 @@ class HomeostaticVisionAntEnv(AntEnv, EzPickle):
 
         if sweat_action > 0.0:
             self.temperature -= self.sweat_cooling_rate
+            self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
+        else:
+            self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.8, 0.6, 0.4, 1.0]  # Default color
         if is_night:
             self.temperature -= self.night_cooling_rate
 
