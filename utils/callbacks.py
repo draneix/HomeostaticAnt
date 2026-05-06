@@ -137,7 +137,7 @@ class MLflowCallback(BaseCallback):
             "iteration/avg_survival_length", avg_survival, step=self.iteration_count
         )
         mlflow.log_metric(
-            "iteration/total_resets", self.total_resets, step=self.iteration_count
+            "iteration/total_resets", self.total_episodes, step=self.iteration_count
         )
         mlflow.log_metric(
             "iteration/mean_motor_activity",

@@ -345,19 +345,19 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         action_magnitude = np.linalg.norm(physical_action)
         self.temperature += (action_magnitude * self.action_heat_gain_rate * self.frame_skip)
         if contact_heat:
-            self.temperature += self.heat_source_gain_rate * contact_heat
+            self.temperature += (self.heat_source_gain_rate * contact_heat * self.frame_skip)
 
         # Update sweat visualization (lingering effect for HUD)
         # Sweat is binary
         self.sweat_ind = sweat_action
 
         if sweat_action > 0.0:
-            self.temperature -= self.sweat_cooling_rate
+            self.temperature -= (self.sweat_cooling_rate * self.frame_skip)
             self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
         else:
             self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.8, 0.6, 0.4, 1.0]  # Default color
         if is_night:
-            self.temperature -= self.night_cooling_rate
+            self.temperature -= (self.night_cooling_rate * self.frame_skip)
 
         # Clipping state variables
         self.hunger = np.clip(self.hunger, -1.0, 1.0)
