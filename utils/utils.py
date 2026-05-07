@@ -9,7 +9,7 @@ from torch import nn
 
 from config import OBS_SPACE_DIM
 from envs.ant_env import HomeostaticAntEnv
-from utils.wrapper import CustomObservationWrapper, SelectiveVecFrameStack
+from utils.wrappers import CustomObservationWrapper, SelectiveVecFrameStack
 
 from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution

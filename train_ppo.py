@@ -6,7 +6,6 @@ import mlflow
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
-from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import (
     SubprocVecEnv,
@@ -37,7 +36,7 @@ from utils.utils import (
     linear_schedule,
     make_env,
 )
-from utils.wrapper import SelectiveVecFrameStack
+from utils.wrappers import SelectiveVecFrameStack
 
 if platform.system() == "Linux":
     os.environ["MUJOCO_GL"] = "egl"  # Use EGL for headless rendering on Linux
