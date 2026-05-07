@@ -102,7 +102,7 @@ def train():
 
         # Initialize Agent
         model = PPO(
-            HomeostaticPPOPolicy,
+            "MultiInputPolicy",
             env,
             verbose=1,
             learning_rate=linear_schedule(
@@ -112,6 +112,7 @@ def train():
             batch_size=PPO_BATCH_SIZE,  # Mini-batch size
             n_epochs=PPO_N_EPOCHS,
             gamma=PPO_GAMMA,
+            squash_output=True,
             gae_lambda=PPO_GAE_LAMBDA,
             clip_range=PPO_CLIP_RANGE,
             ent_coef=PPO_ENT_COEF,  # Small entropy bonus to encourage exploration

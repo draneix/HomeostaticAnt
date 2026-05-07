@@ -118,10 +118,3 @@ class CustomCombinedExtractor(BaseFeaturesExtractor):
         for key in self.extractors.keys():
             encoded_tensor_list.append(self.extractors[key](observations[key]))
         return torch.cat(encoded_tensor_list, dim=1)
-
-
-class HomeostaticPPOPolicy(MultiInputActorCriticPolicy):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # We explicitly set the distribution class for this policy
-        self.action_dist_class = SquashedDiagGaussianDistribution
