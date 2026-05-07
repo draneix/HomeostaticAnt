@@ -32,7 +32,6 @@ from config_ppo import (
 from utils.callbacks import MLflowCallback, MLflowOutputFormat, StepLoggerCallback
 from utils.utils import (
     CustomCombinedExtractor,
-    HomeostaticPPOPolicy,
     linear_schedule,
     make_env,
 )

@@ -7,12 +7,8 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 from torch import nn
 
-from config import OBS_SPACE_DIM
 from envs.ant_env import HomeostaticAntEnv
 from utils.wrappers import CustomObservationWrapper, SelectiveVecFrameStack
-
-from stable_baselines3.common.policies import MultiInputActorCriticPolicy
-from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution
 
 
 def linear_schedule(initial_value: float, final_value: float) -> Callable[[float], float]:
