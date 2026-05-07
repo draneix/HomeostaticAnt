@@ -46,7 +46,7 @@ if platform.system() == "Linux":
 def train():
     # Experiment parameters
     experiment_name = "HomeostaticAntVision"
-    run_name = "PPO"
+    run_name = "PPO_" + dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # Set up MLflow
     mlflow.set_tracking_uri("sqlite:///mlruns/mlruns.db")
@@ -97,7 +97,7 @@ def train():
         # Custom Combined Extractor so that image uses the CNN
         policy_kwargs = dict(
             features_extractor_class=CustomCombinedExtractor,
-            net_arch=dict(pi=[256, 64], qf=[256, 64]),  # Matches paper's architecture
+            net_arch=dict(pi=[256, 64], vf=[256, 64]),  # Matches paper's architecture
             activation_fn=nn.Tanh,
         )
 

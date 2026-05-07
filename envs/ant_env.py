@@ -3,6 +3,7 @@ import random
 
 import mujoco
 import numpy as np
+import scipy.spatial.transform as st
 from gymnasium import spaces
 from gymnasium.envs.mujoco.ant_v5 import AntEnv
 from gymnasium.utils import EzPickle
@@ -30,7 +31,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         sweat_cooling_rate=0.002,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
-        arena_size=10.0,
+        arena_size=9.0,
         num_food=5,
         num_water=5,
         num_heat=3,
@@ -184,7 +185,17 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         qpos[0] = self.np_random.uniform(-self.arena_size + 1, self.arena_size - 1)
         qpos[1] = self.np_random.uniform(-self.arena_size + 1, self.arena_size - 1)
 
-        qvel = self.init_qvel  # Start with zero velocity
+        curr_w, curr_x, curr_y, curr_z = qpos[3:7]
+        current_rot = st.Rotation.from_quat([curr_x, curr_y, curr_z, curr_w])
+        random_yaw_angle = self.np_random.uniform(low=0, high=2 * np.pi)
+        yaw_rot = st.Rotation.from_euler('z', random_yaw_angle)
+        final_rot = yaw_rot * current_rot
+        raw_quat = final_rot.as_quat()
+        qpos[3:7] = [raw_quat[3], raw_quat[0], raw_quat[1], raw_quat[2]]
+
+        qvel = self.init_qvel + self.np_random.uniform(
+            low=-0.01, high=0.01, size=self.model.nv
+        )
         self.set_state(qpos, qvel)
 
         # Randomize resources
@@ -381,8 +392,13 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         env_image_rgb, _ = self.mux_render(camera_name="environment")
         env_image_rgb = self._add_hud(env_image_rgb)
 
+        # Also return POV in infor for recording and viewing
+        # Current vision - dont have any normalize or frame stack etc.
+        pov_image_rgb, _ = self.mux_render(camera_name="pov")
+
         # Include the HUD image in info for easy recording
         info = {
+            "vision": pov_image_rgb,
             "environment": env_image_rgb,
             "internal_state": {
                 "hunger": self.hunger,
