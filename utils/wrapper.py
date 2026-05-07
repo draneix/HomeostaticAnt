@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 import gymnasium as gym
+import cv2
 import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.vec_env import VecEnv, VecEnvWrapper
@@ -10,8 +11,9 @@ from stable_baselines3.common.vec_env.stacked_observations import StackedObserva
 class CustomObservationWrapper(gym.ObservationWrapper):
     """
     Wrapper to ensure observations match the defined spaces.
-    Concatenates RGB and Depth and scale it between [0, 1] for stable training.
     Only applies to vision since environment is for viewing.
+
+    Also does resizing here to ensure that 'vision' will always be (4, 64, 64) regardless of the original image size
     """
 
     def __init__(self, env):
@@ -22,8 +24,13 @@ class CustomObservationWrapper(gym.ObservationWrapper):
         )
 
     def observation(self, obs):
+        # Ensure the image is resized to (64, 64) and normalized to [0, 1]
+        vision = obs["vision"]
+        if vision.shape[0] != 64 or vision.shape[1] != 64:
+            vision = cv2.resize(vision, (64, 64), interpolation=cv2.INTER_AREA)
         # Transpose image to (C, H, W) for SB3
-        obs["vision"] = np.transpose(obs["vision"], (2, 0, 1))
+        vision = np.transpose(vision, (2, 0, 1))
+        obs["vision"] = vision
 
         return obs
 
