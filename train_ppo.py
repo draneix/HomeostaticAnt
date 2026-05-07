@@ -97,6 +97,7 @@ def train():
             features_extractor_class=CustomCombinedExtractor,
             net_arch=dict(pi=[256, 64], vf=[256, 64]),  # Matches paper's architecture
             activation_fn=nn.Tanh,
+            squash_output=True,
         )
 
         # Initialize Agent
@@ -111,12 +112,12 @@ def train():
             batch_size=PPO_BATCH_SIZE,  # Mini-batch size
             n_epochs=PPO_N_EPOCHS,
             gamma=PPO_GAMMA,
-            squash_output=True,
             gae_lambda=PPO_GAE_LAMBDA,
             clip_range=PPO_CLIP_RANGE,
             ent_coef=PPO_ENT_COEF,  # Small entropy bonus to encourage exploration
             vf_coef=PPO_VF_COEF,
             max_grad_norm=PPO_MAX_GRAD_NORM,
+            use_sde=True,
             policy_kwargs=policy_kwargs,
             device=torch.accelerator.current_accelerator()
             if torch.accelerator.is_available()
