@@ -20,7 +20,7 @@ class CustomObservationWrapper(gym.ObservationWrapper):
         super().__init__(env)
         # Update observation space
         self.observation_space["vision"] = gym.spaces.Box(
-            low=0, high=1, shape=(4, 64, 64), dtype=np.float32
+            low=-1, high=1, shape=(4, 64, 64), dtype=np.float32
         )
 
     def observation(self, obs):

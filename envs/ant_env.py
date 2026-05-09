@@ -103,8 +103,8 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             {
                 "proprioception": spaces.Box(-np.inf, np.inf, (OBS_SPACE_DIM,), np.float32),  # Proprioception - body location etc, excluding the resources
                 "vision": spaces.Box(  # Vision with RGB and depth
-                    low=0,
-                    high=1,
+                    low=-1.0,
+                    high=1.0,
                     shape=(self.image_size[1], self.image_size[0], 4),
                     dtype=np.float32,
                 ),
@@ -239,13 +239,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
 
         # Render vision observations
         pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
-        pov_image_rgb = pov_image_rgb.astype(np.float32) / 255.0
+        pov_image_rgb = 2.0 * (pov_image_rgb.astype(np.float32) / 255.0 - 0.5)  # Normalize RGB to [-1, 1]
+        pov_image_depth = 2.0 * pov_image_depth.astype(np.float32) - 1.0  # Normalize depth to [-1, 1]
         pov_image = np.concatenate([pov_image_rgb, np.expand_dims(pov_image_depth, axis=-1)], axis=-1)
-
-        # # Environmental state (Day/Night phase)
-        # phase = (
-        #     self.current_step % self.day_night_cycle_len
-        # ) / self.day_night_cycle_len
 
         return {
             "proprioception": proprio_obs,

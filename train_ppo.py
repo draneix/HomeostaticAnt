@@ -134,7 +134,7 @@ def train():
         print(f"Starting training with {PPO_N_ENVS} environments...")
 
         checkpoint_callback = CheckpointCallback(
-            save_freq=PPO_N_STEPS * PPO_N_ENVS,  # TODO Save every ~10 iterations of PPO
+            save_freq=PPO_N_STEPS,  # TODO Save every ~10 iterations of PPO
             save_path="./models/",
             name_prefix=f"{run_name}_checkpoint",
             save_vecnormalize=True,
