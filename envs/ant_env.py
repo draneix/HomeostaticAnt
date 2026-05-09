@@ -25,13 +25,13 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.0005,
-        heat_source_gain_rate=0.001,
-        night_cooling_rate=0.001,
-        sweat_cooling_rate=0.002,
+        action_heat_gain_rate=0.0,
+        heat_source_gain_rate=0.00015,
+        night_cooling_rate=0.00015,
+        sweat_cooling_rate=0.0,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
-        arena_size=9.0,
+        arena_size=8.0,
         num_food=5,
         num_water=5,
         num_heat=3,
@@ -66,7 +66,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.num_water = num_water
         self.num_heat = num_heat
 
-        self._curr_step = 0
+        self.food_comsumed = 0
+        self.water_consumed = 0
+        self.heat_exposed_time = 0.0
+
+        self.current_step = 0
 
         # Check if heat should be added
         if self.num_heat == 0:
@@ -172,9 +176,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             self.temperature = 0.0
 
         self.current_step = 0
-        self._curr_step = 0
         self.sweat_ind = 0.0  # Uncomment if sweat visualization is needed
 
+        self.food_comsumed = 0
+        self.water_consumed = 0
+        self.heat_exposed_time = 0.0
 
         # Standard Ant reset noise
         # self.init_qpos includes the x and y coordinates in the first 2 entries, different from observation space which does not
@@ -213,11 +219,21 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     def _randomize_object_pos(self, body_id):
         if body_id == -1:
             return
-        # Keep objects within arena bounds (accounting for their size of around 0.5)
-        new_x = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
-        new_y = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
-        self.model.body_pos[body_id][:2] = [new_x, new_y]  # Use body_pos to set position, not qpos which is for the agent since the resources are static
-        # pov_image, _ = self.mux_render(camera_name="pov")
+        # Get ant position to avoid spawning resources too close to the ant
+        pos_is_valid = False
+        while not pos_is_valid:
+            new_x = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
+            new_y = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
+            self.model.body_pos[body_id][:2] = [new_x, new_y]  # Use body_pos to set position, not qpos which is for the agent since the resources are static
+            mujoco.mj_forward(self.model, self.data)  # Update the physics to reflect the new position before checking distances
+            pos_is_valid = True
+            for other_id in self.food_ids + self.water_ids + self.heat_ids + [self.ant_body_id]:
+                if other_id == body_id:
+                    continue
+                dist = np.linalg.norm(self.data.xpos[body_id][:2] - self.data.xpos[other_id][:2])
+                if dist < 2.0:  # Slightly larger buffer for 0.5 size objects
+                    pos_is_valid = False
+                    break
 
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
@@ -306,7 +322,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     def step(self, action):
         physical_action = action[:8]
         sweat_action = action[8]
-        self._curr_step += 1
+        self.current_step += 1
 
         # Apply physical action and simulate
         self.do_simulation(physical_action, self.frame_skip)
@@ -320,31 +336,33 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Resource and Heat Contact Detection
         contact_heat = 0
         respawned_bodies = set()
-        ant_pos = self.data.xpos[self.ant_body_id]
+        ant_pos = self.data.xpos[self.ant_body_id][:2]
 
         # Distance-based detection for all resources (Food, Water, Heat)
         # Check Food
         for body_id in self.food_ids:
             if body_id not in respawned_bodies:
-                food_pos = self.data.xpos[body_id]
+                food_pos = self.data.xpos[body_id][:2]
                 if np.linalg.norm(ant_pos - food_pos) < 1.0:
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
-        
+                    self.food_comsumed += 1
+
         # Check Water
         for body_id in self.water_ids:
             if body_id not in respawned_bodies:
-                water_pos = self.data.xpos[body_id]
+                water_pos = self.data.xpos[body_id][:2]
                 if np.linalg.norm(ant_pos - water_pos) < 1.0:
                     self.thirst += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
+                    self.water_consumed += 1
 
         # Pass-through detection (Heat)
         # Can get heated by multiple sources
         for heat_body_id in self.heat_ids:
-            heat_pos = self.data.xpos[heat_body_id]
+            heat_pos = self.data.xpos[heat_body_id][:2]
             if np.linalg.norm(ant_pos - heat_pos) < 1.0:
                 contact_heat += 1
 
@@ -357,6 +375,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.temperature += (action_magnitude * self.action_heat_gain_rate * self.frame_skip)
         if contact_heat:
             self.temperature += (self.heat_source_gain_rate * contact_heat * self.frame_skip)
+            self.heat_exposed_time += (1 * self.frame_skip * contact_heat)
 
         # Update sweat visualization (lingering effect for HUD)
         # Sweat is binary
@@ -404,6 +423,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 "hunger": self.hunger,
                 "thirst": self.thirst,
                 "temperature": self.temperature
+            },
+            "resources_consumed": {
+                "food": self.food_comsumed,
+                "water": self.water_consumed,
+                "heat_exposure_time": self.heat_exposed_time,
             }
         }
 
@@ -418,7 +442,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             or abs(self.temperature) > 0.99999
         )
 
-        if self._curr_step >= self.max_steps:
+        if self.current_step >= self.max_steps:
             return True
 
         # if not is_healthy:

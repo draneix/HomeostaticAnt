@@ -88,31 +88,45 @@ class MLflowCallback(BaseCallback):
 
                     # Episode metrics provided by VecMonitor
                     mlflow.log_metric(
-                        "episode/reward", info["episode"]["r"], step=current_step
+                        "episode/reward", info["episode"]["r"], step=self.total_episodes
                     )
                     mlflow.log_metric(
-                        "episode/length", info["episode"]["l"], step=current_step
+                        "episode/length", info["episode"]["l"], step=self.total_episodes
                     )
-
-                    # # Log total resets
-                    # mlflow.log_metric("episode/total_resets_episodes", self.total_episodes, step=current_step)
 
                     # Final drive states
                     # To see what is killing the agent
                     mlflow.log_metric(
                         "episode/final_hunger",
                         info["internal_state"]["hunger"],
-                        step=current_step,
+                        step=self.total_episodes,
                     )
                     mlflow.log_metric(
                         "episode/final_thirst",
                         info["internal_state"]["thirst"],
-                        step=current_step,
+                        step=self.total_episodes,
                     )
                     mlflow.log_metric(
                         "episode/final_temp",
                         info["internal_state"]["temperature"],
-                        step=current_step,
+                        step=self.total_episodes,
+                    )
+
+                    # Final resource consumption for the episode
+                    mlflow.log_metric(
+                        "episode/total_food_consumed",
+                        info["resources_consumed"]["food"],
+                        step=self.total_episodes,
+                    )
+                    mlflow.log_metric(
+                        "episode/total_water_consumed",
+                        info["resources_consumed"]["water"],
+                        step=self.total_episodes,
+                    )
+                    mlflow.log_metric(
+                        "episode/total_heat_exposed_time",
+                        info["resources_consumed"]["heat_exposure_time"],
+                        step=self.total_episodes,
                     )
 
         return True

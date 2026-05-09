@@ -26,6 +26,7 @@ from config_ppo import (
     PPO_N_ENVS,
     PPO_N_EPOCHS,
     PPO_N_STEPS,
+    PPO_TARGET_KL,
     PPO_TOTAL_TIMESTEPS,
     PPO_VF_COEF,
 )
@@ -98,6 +99,8 @@ def train():
             net_arch=dict(pi=[256, 64], vf=[256, 64]),  # Matches paper's architecture
             activation_fn=nn.Tanh,
             squash_output=True,
+            log_std_init=-2,
+            normalize_images=False,
         )
 
         # Initialize Agent
@@ -116,8 +119,10 @@ def train():
             clip_range=PPO_CLIP_RANGE,
             ent_coef=PPO_ENT_COEF,  # Small entropy bonus to encourage exploration
             vf_coef=PPO_VF_COEF,
+            target_kl=PPO_TARGET_KL,  # Early stopping based on KL divergence
             max_grad_norm=PPO_MAX_GRAD_NORM,
             use_sde=True,
+            sde_sample_freq=4,
             policy_kwargs=policy_kwargs,
             device=torch.accelerator.current_accelerator()
             if torch.accelerator.is_available()
