@@ -38,13 +38,12 @@ def make_env(
             is_training=is_training,
             num_heat=num_heat,
         )
-
+        set_random_seed(seed + rank)
         env = CustomObservationWrapper(env)
         # Note: Gymnasium reset doesn't take seed in the same way as old Gym
         # but we can set it here if needed.
         return env
 
-    set_random_seed(seed)
     return _init
 
 

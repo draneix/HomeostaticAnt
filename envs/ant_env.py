@@ -20,7 +20,6 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     def __init__(
         self,
         xml_file="ant_env.xml",
-        frame_skip=4,  # Standard based on atari
         default_camera_config=DEFAULT_CAMERA_CONFIG,
         image_size=(64, 64),
         hunger_decay=0.00015,
@@ -66,7 +65,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.num_water = num_water
         self.num_heat = num_heat
 
-        self.food_comsumed = 0
+        self.food_consumed = 0
         self.water_consumed = 0
         self.heat_exposed_time = 0.0
 
@@ -85,7 +84,6 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         AntEnv.__init__(
             self,
             xml_file=xml_file,
-            frame_skip=frame_skip,  # Frame step is 0.01s
             default_camera_config=default_camera_config,
             width=image_size[0],
             height=image_size[1],
@@ -119,7 +117,6 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         EzPickle.__init__(
             self,
             xml_file,
-            frame_skip,
             default_camera_config,
             image_size,
             hunger_decay,
@@ -178,7 +175,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.current_step = 0
         self.sweat_ind = 0.0  # Uncomment if sweat visualization is needed
 
-        self.food_comsumed = 0
+        self.food_consumed = 0
         self.water_consumed = 0
         self.heat_exposed_time = 0.0
 
@@ -322,11 +319,10 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     def step(self, action):
         physical_action = action[:8]
         sweat_action = action[8]
-        self.current_step += 1
 
         # Apply physical action and simulate
         self.do_simulation(physical_action, self.frame_skip)
-        self.current_step += (1 * self.frame_skip)
+        self.current_step += 1
 
         # Homeostatic Dynamics
         is_night = (self.current_step % self.day_night_cycle_len) > (
@@ -347,7 +343,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
-                    self.food_comsumed += 1
+                    self.food_consumed += 1
 
         # Check Water
         for body_id in self.water_ids:
@@ -367,27 +363,27 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 contact_heat += 1
 
         # Passive decay/gain
-        self.hunger -= (self.hunger_decay * self.frame_skip)
-        self.thirst -= (self.thirst_decay * self.frame_skip)
+        self.hunger -= (self.hunger_decay)
+        self.thirst -= (self.thirst_decay)
 
         # Temperature dynamics
         action_magnitude = np.linalg.norm(physical_action)
-        self.temperature += (action_magnitude * self.action_heat_gain_rate * self.frame_skip)
+        self.temperature += (action_magnitude * self.action_heat_gain_rate)
         if contact_heat:
-            self.temperature += (self.heat_source_gain_rate * contact_heat * self.frame_skip)
-            self.heat_exposed_time += (1 * self.frame_skip * contact_heat)
+            self.temperature += (self.heat_source_gain_rate * contact_heat)
+            self.heat_exposed_time += (1.0 * contact_heat)
 
         # Update sweat visualization (lingering effect for HUD)
         # Sweat is binary
         self.sweat_ind = sweat_action
 
         if sweat_action > 0.0:
-            self.temperature -= (self.sweat_cooling_rate * self.frame_skip)
+            self.temperature -= (self.sweat_cooling_rate)
             self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
         else:
             self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.8, 0.6, 0.4, 1.0]  # Default color
         if is_night:
-            self.temperature -= (self.night_cooling_rate * self.frame_skip)
+            self.temperature -= (self.night_cooling_rate)
 
         # Clipping state variables
         self.hunger = np.clip(self.hunger, -1.0, 1.0)
@@ -405,33 +401,36 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         if self.render_mode == "human":
             self.render()
 
-        # Return the environment image in info for vieweing
-        # Add visual HUD to the environment image for debugging/monitoring
-        # Dont need depth for viewing
-        env_image_rgb, _ = self.mux_render(camera_name="environment")
-        env_image_rgb = self._add_hud(env_image_rgb)
-
-        # Also return POV in infor for recording and viewing
-        # Current vision - dont have any normalize or frame stack etc.
-        pov_image_rgb, _ = self.mux_render(camera_name="pov")
-
         # Include the HUD image in info for easy recording
         info = {
-            "vision": pov_image_rgb,
-            "environment": env_image_rgb,
             "internal_state": {
                 "hunger": self.hunger,
                 "thirst": self.thirst,
                 "temperature": self.temperature
             },
             "resources_consumed": {
-                "food": self.food_comsumed,
+                "food": self.food_consumed,
                 "water": self.water_consumed,
                 "heat_exposure_time": self.heat_exposed_time,
             }
         }
 
-        return obs, reward, self.terminated, False, info
+        # Return the environment image in info for vieweing
+        # Add visual HUD to the environment image for debugging/monitoring
+        # Dont need depth for viewing
+        # Only do it for debugging
+        if not self.is_training:
+            env_image_rgb, _ = self.mux_render(camera_name="environment")
+            env_image_rgb = self._add_hud(env_image_rgb)
+
+            # Also return POV in infor for recording and viewing
+            # Current vision - dont have any normalize or frame stack etc.
+            pov_image_rgb, _ = self.mux_render(camera_name="pov")
+
+            info["vision"] = pov_image_rgb
+            info["environment"] = env_image_rgb
+
+        return obs, reward, self.terminated, self.truncated, info
 
     @property
     def terminated(self):
@@ -442,9 +441,6 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             or abs(self.temperature) > 0.99999
         )
 
-        if self.current_step >= self.max_steps:
-            return True
-
         # if not is_healthy:
         #     print(f"Not healthy at step {self.current_step}: z_pos={z_pos:.2f}")
         
@@ -453,3 +449,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         #     print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
 
         return bool(limit_reached)  # bool(not is_healthy) or 
+
+    @property
+    def truncated(self):
+        return self.current_step >= self.max_steps
