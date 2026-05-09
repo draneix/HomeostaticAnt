@@ -30,12 +30,13 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         sweat_cooling_rate=0.0,
         replenish_rate=0.1,
         day_night_cycle_len=2_000,
-        arena_size=8.0,
-        num_food=5,
-        num_water=5,
-        num_heat=3,
+        arena_size=10.0,
+        num_food=20,
+        num_water=20,
+        num_heat=12,
         is_training=False,
         max_steps=40_000,
+        render_mode="rgb_array",
         **kwargs,
     ):
         # Resolve absolute path for xml_file
@@ -70,6 +71,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.heat_exposed_time = 0.0
 
         self.current_step = 0
+        self.render_mode = render_mode
 
         # Check if heat should be added
         if self.num_heat == 0:
@@ -87,6 +89,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             default_camera_config=default_camera_config,
             width=image_size[0],
             height=image_size[1],
+            render_mode=render_mode,
             **kwargs,
         )
 
@@ -132,6 +135,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             num_water,
             num_heat,
             is_training,
+            render_mode,
             max_steps,
             **kwargs,
         )
@@ -335,7 +339,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.food_ids:
             if body_id not in respawned_bodies:
                 food_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - food_pos) < 1.0:
+                if np.linalg.norm(ant_pos - food_pos) < 1.0 and self._is_in_front(food_pos):
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -345,7 +349,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.water_ids:
             if body_id not in respawned_bodies:
                 water_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - water_pos) < 1.0:
+                if np.linalg.norm(ant_pos - water_pos) < 1.0 and self._is_in_front(water_pos):
                     self.thirst += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -355,7 +359,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Can get heated by multiple sources
         for heat_body_id in self.heat_ids:
             heat_pos = self.data.xpos[heat_body_id][:2]
-            if np.linalg.norm(ant_pos - heat_pos) < 1.0:
+            if np.linalg.norm(ant_pos - heat_pos) < 3.0 and self._is_in_front(heat_pos):
                 contact_heat += 1
 
         # Passive decay/gain
@@ -449,3 +453,26 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     @property
     def truncated(self):
         return self.current_step >= self.max_steps
+
+    def _is_in_front(self, target_pos, fov_threshold=0.5):
+        """
+        Checks if target_pos is within the agent's forward-facing cone.
+        0.5 corresponds to a +/- 60 degree FOV (total 120 degrees).
+        """
+        # 1. Get Ant's current position and rotation matrix
+        ant_pos = self.data.xpos[self.ant_body_id][:2]
+        # In MuJoCo, the first column of the xmat (rotation matrix) is the local X-axis (Forward)
+        forward_vec = self.data.xmat[self.ant_body_id].reshape(3, 3)[:, 0]
+
+        # 2. Vector from Ant to Resource (ignore Z for a flat arena check)
+        target_vec = target_pos - ant_pos
+
+        # 3. Normalize the target vector
+        dist = np.linalg.norm(target_vec)
+        if dist < 1e-6: return True # If touching, count as in front
+        target_vec /= dist
+
+        # 4. Dot product check
+        dot_product = np.dot(forward_vec[:2], target_vec[:2])
+        
+        return dot_product > fov_threshold

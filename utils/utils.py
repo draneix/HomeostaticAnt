@@ -25,7 +25,7 @@ def linear_schedule(initial_value: float, final_value: float) -> Callable[[float
 
 
 def make_env(
-    rank, seed=0, xml_file="../envs/ant_env.xml", is_training=False, num_heat=3, image_size=(64, 64)
+    rank, seed=0, xml_file="../envs/ant_env.xml", is_training=False, image_size=(64, 64)
 ):
     """
     Utility function for multiprocessed env.
@@ -36,7 +36,6 @@ def make_env(
             xml_file=xml_file,
             image_size=image_size,
             is_training=is_training,
-            num_heat=num_heat,
         )
         set_random_seed(seed + rank)
         env = CustomObservationWrapper(env)
@@ -47,16 +46,15 @@ def make_env(
     return _init
 
 
-def make_test_env(image_size=(512, 512), num_heat=3):
+def make_test_env(image_size=(512, 512)):
     def _init():
         env = HomeostaticAntEnv(
-            xml_file="ant_env.xml", image_size=image_size, is_training=False, render_mode="human", num_heat=num_heat
+            xml_file="ant_env.xml", image_size=image_size, is_training=False, render_mode="human"
         )
         env = CustomObservationWrapper(env)
         return env
 
     env = DummyVecEnv([_init])
-    env = VecMonitor(env)
     env = SelectiveVecFrameStack(
         env, n_stack=3, keys_to_stack=["vision"], channels_order="first"
     )

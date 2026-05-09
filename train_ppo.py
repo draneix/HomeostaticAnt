@@ -11,6 +11,7 @@ from stable_baselines3.common.vec_env import (
     SubprocVecEnv,
     VecMonitor,
     VecNormalize,
+    VecVideoRecorder,
 )
 from torch import nn
 
@@ -29,6 +30,7 @@ from config_ppo import (
     PPO_TARGET_KL,
     PPO_TOTAL_TIMESTEPS,
     PPO_VF_COEF,
+    PPO_IMAGE_SIZE,
 )
 from utils.callbacks import MLflowCallback, MLflowOutputFormat, StepLoggerCallback
 from utils.utils import (
@@ -38,9 +40,11 @@ from utils.utils import (
 )
 from utils.wrappers import SelectiveVecFrameStack
 
+print(f"Running on platform: {platform.system()}")
 if platform.system() == "Linux":
     os.environ["MUJOCO_GL"] = "egl"  # Use EGL for headless rendering on Linux
 
+os.environ["OMP_NUM_THREADS"] = "1"  # Limit PyTorch to use a single thread for CPU operations
 
 def train():
     # Experiment parameters
@@ -65,19 +69,30 @@ def train():
                 "gamma": PPO_GAMMA,
                 "norm_obs": False,
                 "norm_reward": False,
+                "image_size": PPO_IMAGE_SIZE,
             }
         )
 
         # Initialize Parallel Environments
         env = SubprocVecEnv(
             [
-                make_env(i, xml_file="ant_env.xml", is_training=True, num_heat=3)
+                make_env(i, xml_file="ant_env.xml", is_training=True, image_size=PPO_IMAGE_SIZE)
                 for i in range(PPO_N_ENVS)
-            ]
+            ],
+            start_method="spawn" if platform.system() == "Windows" else "forkserver",
         )
 
         # Monitor logs episode reward/length
         env = VecMonitor(env)
+
+        # Wrap to record videos of the training every PPO iteration
+        env = VecVideoRecorder(
+            env,
+            video_folder="./videos/",
+            record_video_trigger=lambda step: step % (PPO_N_STEPS) == 0,
+            video_length=2_000,
+            name_prefix=run_name,
+        )
 
         # Stack frames
         env = SelectiveVecFrameStack(
@@ -88,6 +103,7 @@ def train():
         env = VecNormalize(
             env, norm_obs=True, norm_reward=False, norm_obs_keys=["proprioception"]
         )
+
 
         # Configure SB3 Logger to use MLflow
         new_logger = configure(None, ["csv"])
@@ -181,4 +197,6 @@ def train():
 if __name__ == "__main__":
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
+    os.makedirs("videos", exist_ok=True)
+    os.makedirs("mlruns", exist_ok=True)
     train()
