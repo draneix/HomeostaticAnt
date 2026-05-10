@@ -1,5 +1,5 @@
-from pathlib import Path
 import random
+from pathlib import Path
 
 import mujoco
 import numpy as np
@@ -9,7 +9,6 @@ from gymnasium.envs.mujoco.ant_v5 import AntEnv
 from gymnasium.utils import EzPickle
 
 from config import OBS_SPACE_DIM, REWARD_SCALE
-
 
 DEFAULT_CAMERA_CONFIG = {
     "distance": 4.0,
@@ -22,18 +21,18 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         xml_file="ant_env.xml",
         default_camera_config=DEFAULT_CAMERA_CONFIG,
         image_size=(64, 64),
-        hunger_decay=0.0003,
-        thirst_decay=0.0003,
-        action_heat_gain_rate=0.00002,
-        heat_source_gain_rate=0.0005,
-        night_cooling_rate=0.00015,
-        sweat_cooling_rate=0.0001,
-        replenish_rate=0.25,
+        hunger_decay=0.0004,
+        thirst_decay=0.0004,
+        action_heat_gain_rate=0.00015,
+        heat_source_gain_rate=0.002,
+        night_cooling_rate=0.0005,
+        sweat_cooling_rate=0.001,
+        replenish_rate=0.1,
         day_night_cycle_len=1000,
         arena_size=10.0,
-        num_food=20,
-        num_water=20,
-        num_heat=12,
+        num_food=10,
+        num_water=10,
+        num_heat=5,
         is_training=False,
         max_steps=40_000,
         render_mode="rgb_array",
@@ -59,6 +58,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.heat_source_gain_rate = heat_source_gain_rate
         self.night_cooling_rate = night_cooling_rate
         self.sweat_cooling_rate = sweat_cooling_rate
+        self.sweat_thirst_cost = sweat_cooling_rate * 2
         self.replenish_rate = replenish_rate
         self.day_night_cycle_len = day_night_cycle_len
         self.arena_size = arena_size
@@ -75,11 +75,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
 
         # Check if heat should be added
         if self.num_heat == 0:
-            print("No heat sources defined. Removing heat dynamics. Ensure that XML file does not include heat bodies and that heat-related parameters are set to zero.")
+            print(
+                "No heat sources defined. Removing heat dynamics. Ensure that XML file does not include heat bodies and that heat-related parameters are set to zero."
+            )
             self.action_heat_gain_rate = 0.0
             self.heat_source_gain_rate = 0.0
             self.night_cooling_rate = 0.0
             self.sweat_cooling_rate = 0.0
+            self.sweat_thirst_cost = 0.0
 
         # Initialize AntEnv
         # AntEnv v5 parameters
@@ -104,7 +107,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Vision concatenates to RGBD but not transposing
         self.observation_space = spaces.Dict(
             {
-                "proprioception": spaces.Box(-np.inf, np.inf, (OBS_SPACE_DIM,), np.float32),  # Proprioception - body location etc, excluding the resources
+                "proprioception": spaces.Box(
+                    -np.inf, np.inf, (OBS_SPACE_DIM,), np.float32
+                ),  # Proprioception - body location etc, excluding the resources
                 "vision": spaces.Box(  # Vision with RGB and depth
                     low=-1.0,
                     high=1.0,
@@ -148,7 +153,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.food_ids = self._get_body_ids(self.food_names)
         self.water_ids = self._get_body_ids(self.water_names)
         self.heat_ids = self._get_body_ids(self.heat_names)
-        self.ant_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+        self.ant_body_id = mujoco.mj_name2id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, "torso"
+        )
 
     def _get_body_ids(self, names):
         ids = []
@@ -164,9 +171,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # This is called by AntEnv.reset
         if self.is_training:
             # During training, we can randomize the initial homeostatic state
-            self.hunger = self.np_random.uniform(-(1/6), (1/6))
-            self.thirst = self.np_random.uniform(-(1/6), (1/6))
-            self.temperature = self.np_random.uniform(-(1/6), (1/6))
+            self.hunger = self.np_random.uniform(-(1 / 6), (1 / 6))
+            self.thirst = self.np_random.uniform(-(1 / 6), (1 / 6))
+            self.temperature = self.np_random.uniform(-(1 / 6), (1 / 6))
         else:
             self.hunger = 0.0
             self.thirst = 0.0
@@ -195,7 +202,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         curr_w, curr_x, curr_y, curr_z = qpos[3:7]
         current_rot = st.Rotation.from_quat([curr_x, curr_y, curr_z, curr_w])
         random_yaw_angle = self.np_random.uniform(low=0, high=2 * np.pi)
-        yaw_rot = st.Rotation.from_euler('z', random_yaw_angle)
+        yaw_rot = st.Rotation.from_euler("z", random_yaw_angle)
         final_rot = yaw_rot * current_rot
         raw_quat = final_rot.as_quat()
         qpos[3:7] = [raw_quat[3], raw_quat[0], raw_quat[1], raw_quat[2]]
@@ -215,7 +222,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         return self._get_obs()
 
     def _calculate_drive(self):
-        return (self.hunger**2 + self.thirst**2 + self.temperature**2)
+        return self.hunger**2 + self.thirst**2 + self.temperature**2
 
     def _randomize_object_pos(self, body_id):
         if body_id == -1:
@@ -225,13 +232,22 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         while not pos_is_valid:
             new_x = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
             new_y = random.uniform(-self.arena_size + 0.75, self.arena_size - 0.75)
-            self.model.body_pos[body_id][:2] = [new_x, new_y]  # Use body_pos to set position, not qpos which is for the agent since the resources are static
-            mujoco.mj_forward(self.model, self.data)  # Update the physics to reflect the new position before checking distances
+            self.model.body_pos[body_id][:2] = [
+                new_x,
+                new_y,
+            ]  # Use body_pos to set position, not qpos which is for the agent since the resources are static
+            mujoco.mj_forward(
+                self.model, self.data
+            )  # Update the physics to reflect the new position before checking distances
             pos_is_valid = True
-            for other_id in self.food_ids + self.water_ids + self.heat_ids + [self.ant_body_id]:
+            for other_id in (
+                self.food_ids + self.water_ids + self.heat_ids + [self.ant_body_id]
+            ):
                 if other_id == body_id:
                     continue
-                dist = np.linalg.norm(self.data.xpos[body_id][:2] - self.data.xpos[other_id][:2])
+                dist = np.linalg.norm(
+                    self.data.xpos[body_id][:2] - self.data.xpos[other_id][:2]
+                )
                 if dist < 2.0:  # Slightly larger buffer for 0.5 size objects
                     pos_is_valid = False
                     break
@@ -239,19 +255,30 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
         # OBS_SPACE_DIM shape about the body position, velocity, and joint angles
-        proprio_obs = AntEnv._get_obs(self)[:OBS_SPACE_DIM]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
+        proprio_obs = AntEnv._get_obs(
+            self
+        )[
+            :OBS_SPACE_DIM
+        ]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
 
         # Render vision observations
         pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
-        pov_image_rgb = 2.0 * (pov_image_rgb.astype(np.float32) / 255.0 - 0.5)  # Normalize RGB to [-1, 1]
-        pov_image_depth = 2.0 * pov_image_depth.astype(np.float32) - 1.0  # Normalize depth to [-1, 1]
-        pov_image = np.concatenate([pov_image_rgb, np.expand_dims(pov_image_depth, axis=-1)], axis=-1)
+        pov_image_rgb = 2.0 * (
+            pov_image_rgb.astype(np.float32) / 255.0 - 0.5
+        )  # Normalize RGB to [-1, 1]
+        pov_image_depth = (
+            2.0 * pov_image_depth.astype(np.float32) - 1.0
+        )  # Normalize depth to [-1, 1]
+        pov_image = np.concatenate(
+            [pov_image_rgb, np.expand_dims(pov_image_depth, axis=-1)], axis=-1
+        )
 
         return {
             "proprioception": proprio_obs,
             "vision": pov_image,
             "internal_state": np.array(
-                [self.hunger, self.thirst, self.temperature], dtype=np.float32  # internal variables
+                [self.hunger, self.thirst, self.temperature],
+                dtype=np.float32,  # internal variables
             ),
         }
 
@@ -267,13 +294,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         thickness = 1
 
         # Day/Night Status
-        is_night = (self.current_step % self.day_night_cycle_len) > (
+        is_night = (self.current_step % self.day_night_cycle_len) >= (
             self.day_night_cycle_len / 2
         )
         time_text = "NIGHT" if is_night else "DAY"
-        time_color = (
-            (0, 255, 255) if is_night else (255, 255, 0)
-        )
+        time_color = (0, 255, 255) if is_night else (255, 255, 0)
 
         stats = [
             (f"Hunger: {self.hunger:.2f}", (0, 255, 0)),  # Green
@@ -296,10 +321,12 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.mujoco_renderer.camera_id = cam_id
 
         # Adjust lighting based on day/night before rendering
-        is_night = (self.current_step % self.day_night_cycle_len) > (
+        is_night = (self.current_step % self.day_night_cycle_len) >= (
             self.day_night_cycle_len / 2
         )
-        if self.num_heat > 0:  # Only adjust lighting if heat sources are present, otherwise it can be confusing if the lighting changes but there are no heat dynamics
+        if (
+            self.num_heat > 0
+        ):  # Only adjust lighting if heat sources are present, otherwise it can be confusing if the lighting changes but there are no heat dynamics
             if is_night:
                 self.model.light_diffuse[0] = [0.1, 0.1, 0.1]  # Dim the light
             else:
@@ -308,11 +335,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 self.model.light_diffuse[0] = [0.9, 0.9, 0.9]
 
         # Note that rgbd_tuple returns (rgb, depth) which is given by:
-            # RGB: uint8 array of shape (height, width, 3) - this has a range of (0, 255) for each channel
-            # Depth: float32 array of shape (height, width) with depth in meters - this has a range of (0, 1)
-                # Uses Mujoco's depth rendering that it calculates on its own. Closer objects have smaller depth values
+        # RGB: uint8 array of shape (height, width, 3) - this has a range of (0, 255) for each channel
+        # Depth: float32 array of shape (height, width) with depth in meters - this has a range of (0, 1)
+        # Uses Mujoco's depth rendering that it calculates on its own. Closer objects have smaller depth values
         img = self.mujoco_renderer.render(render_mode="rgbd_tuple")
-        
+
         self.mujoco_renderer.camera_id = old_cam_id
         return img
 
@@ -325,7 +352,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.current_step += 1
 
         # Homeostatic Dynamics
-        is_night = (self.current_step % self.day_night_cycle_len) > (
+        is_night = (self.current_step % self.day_night_cycle_len) >= (
             self.day_night_cycle_len / 2
         )
 
@@ -339,7 +366,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.food_ids:
             if body_id not in respawned_bodies:
                 food_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - food_pos) < 1.0:  #  and self._is_in_front(food_pos)
+                if (
+                    np.linalg.norm(ant_pos - food_pos) < 1.0
+                ):  #  and self._is_in_front(food_pos)
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -349,7 +378,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.water_ids:
             if body_id not in respawned_bodies:
                 water_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - water_pos) < 1.0:  #  and self._is_in_front(water_pos):
+                if (
+                    np.linalg.norm(ant_pos - water_pos) < 1.0
+                ):  #  and self._is_in_front(water_pos):
                     self.thirst += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -359,31 +390,58 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Can get heated by multiple sources
         for heat_body_id in self.heat_ids:
             heat_pos = self.data.xpos[heat_body_id][:2]
-            if np.linalg.norm(ant_pos - heat_pos) < 1.0:  #  and self._is_in_front(heat_pos):
+            if (
+                np.linalg.norm(ant_pos - heat_pos) < 1.0
+            ):  #  and self._is_in_front(heat_pos):
                 contact_heat += 1
 
         # Passive decay/gain
-        self.hunger -= (self.hunger_decay)
-        self.thirst -= (self.thirst_decay)
+        self.hunger -= self.hunger_decay
+        self.thirst -= self.thirst_decay
 
         # Temperature dynamics
         action_magnitude = np.linalg.norm(physical_action)
-        self.temperature += (action_magnitude * self.action_heat_gain_rate)
+        self.temperature += action_magnitude**2 * self.action_heat_gain_rate  # quadratic so small movements gain less heat than moving wildly
         if contact_heat:
-            self.temperature += (self.heat_source_gain_rate * contact_heat)
-            self.heat_exposed_time += (1.0 * contact_heat)
+            self.temperature += self.heat_source_gain_rate * contact_heat
+            self.heat_exposed_time += 1.0 * contact_heat
 
         # Update sweat visualization (lingering effect for HUD)
         # Sweat is binary
         self.sweat_ind = sweat_action
 
         if sweat_action > 0.0:
-            self.temperature -= (self.sweat_cooling_rate)
-            self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
+            self.temperature -= self.sweat_cooling_rate
+            self.thirst -= self.sweat_thirst_cost
+            self.model.geom_rgba[
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")
+            ] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
         else:
-            self.model.geom_rgba[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")] = [0.8, 0.6, 0.4, 1.0]  # Default color
+            self.model.geom_rgba[
+                mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")
+            ] = [0.8, 0.6, 0.4, 1.0]  # Default color
         if is_night:
-            self.temperature -= (self.night_cooling_rate)
+            self.temperature -= self.night_cooling_rate
+
+        # Check if agent has flipped
+        up_vector_z = self.data.xmat[self.ant_body_id][8]
+        z_pos = self.data.xpos[self.ant_body_id][2]
+
+        limit_reached = (
+            abs(self.hunger) > 0.99999
+            or abs(self.thirst) > 0.99999
+            or abs(self.temperature) > 0.99999
+        )
+        is_flipped = up_vector_z < 0.5
+        is_height_invalid = z_pos < 0.2 or z_pos > 1.0
+
+        term_reason = 0  # Max episode...?
+        if limit_reached:
+            term_reason = 1  # homeostatic
+        elif is_flipped:
+            term_reason = 2  # flipped
+        elif is_height_invalid:
+            term_reason = 3  # height
 
         # Clipping state variables
         self.hunger = np.clip(self.hunger, -1.0, 1.0)
@@ -401,18 +459,24 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         if self.render_mode == "human":
             self.render()
 
-        # Include the HUD image in info for easy recording
         info = {
+            "time": {"timestep": self.current_step, "is_night": is_night},
             "internal_state": {
                 "hunger": self.hunger,
                 "thirst": self.thirst,
-                "temperature": self.temperature
+                "temperature": self.temperature,
             },
             "resources_consumed": {
                 "food": self.food_consumed,
                 "water": self.water_consumed,
                 "heat_exposure_time": self.heat_exposed_time,
-            }
+                "sweating": 1 if sweat_action > 0.0 else 0,
+            },
+            "stability": {
+                "up_vector_z": up_vector_z,
+                "z_pos": z_pos,
+                "termination_reason": term_reason,
+            },
         }
 
         # Return the environment image in info for vieweing
@@ -441,12 +505,17 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             or abs(self.temperature) > 0.99999
         )
 
-        z_pos = self.data.xpos[self.ant_body_id][2]
-        # Standard Ant healthy check is z in [0.2, 1.0]
-        # We use a slightly stricter 0.28 to catch flips early
-        is_flipped = z_pos < 0.28 or z_pos > 1.1
+        # Orientation check (True Flip Check)
+        # xmat[8] is the world-Z component of the torso's local Z-axis (Up)
+        # 1.0 = upright, 0.0 = on side, -1.0 = upside down
+        up_vector_z = self.data.xmat[self.ant_body_id][8]
+        is_flipped = up_vector_z < 0.5  # Tilted more than 60 degrees
 
-        return bool(limit_reached) or is_flipped
+        # # Height check
+        # z_pos = self.data.xpos[self.ant_body_id][2]
+        # is_too_low = z_pos < 0.2 or z_pos > 1.0
+
+        return bool(limit_reached) or is_flipped  # or is_too_low
 
     @property
     def truncated(self):
@@ -467,10 +536,11 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
 
         # 3. Normalize the target vector
         dist = np.linalg.norm(target_vec)
-        if dist < 1e-6: return True # If touching, count as in front
+        if dist < 1e-6:
+            return True  # If touching, count as in front
         target_vec /= dist
 
         # 4. Dot product check
         dot_product = np.dot(forward_vec[:2], target_vec[:2])
-        
+
         return dot_product > fov_threshold

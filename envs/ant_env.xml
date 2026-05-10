@@ -1,13 +1,13 @@
 <mujoco model="ant">
   <compiler angle="degree" coordinate="local" inertiafromgeom="true"/>
   <option integrator="RK4" timestep="0.01"/>
-  <!-- Set extent to 10 manually to match arena size. Required for RGBD visual because adding walls inflate the extent. -->
-  <statistic extent="15" center="0 0 0"/>
+  <!-- Set extent to 12 manually to match arena size. Required for RGBD visual because adding walls inflate the extent. -->
+  <statistic extent="12" center="0 0 0"/>
   <custom>
     <numeric data="0.0 0.0 0.55 1.0 0.0 0.0 0.0 0.0 1.0 0.0 -1.0 0.0 -1.0 0.0 1.0" name="init_qpos"/>
   </custom>
   <visual>
-    <map znear="0.01" zfar="50"/>
+    <map znear="0.02" zfar="25"/>
   </visual>
   <default>
     <joint armature="1" damping="1" limited="true"/>
@@ -104,7 +104,8 @@
     <body name="food_7" pos="10 10 0.5"><geom name="food_7_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_8" pos="11 11 0.5"><geom name="food_8_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_9" pos="12 12 0.5"><geom name="food_9_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
-    <body name="food_10" pos="3 3 0.5"><geom name="food_10_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
+    
+    <!-- <body name="food_10" pos="3 3 0.5"><geom name="food_10_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_11" pos="4 4 0.5"><geom name="food_11_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_12" pos="5 5 0.5"><geom name="food_12_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_13" pos="6 6 0.5"><geom name="food_13_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
@@ -113,7 +114,7 @@
     <body name="food_16" pos="10 10 0.5"><geom name="food_16_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_17" pos="11 11 0.5"><geom name="food_17_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
     <body name="food_18" pos="12 12 0.5"><geom name="food_18_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
-    <body name="food_19" pos="12 12 0.5"><geom name="food_19_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body>
+    <body name="food_19" pos="12 12 0.5"><geom name="food_19_geom" size="0.5" type="sphere" rgba="0 1 0 1" conaffinity="0" contype="2"/></body> -->
 
     <!-- Water Sources: contype 8 (Resource), conaffinity 0 (Pass-through) -->
     <body name="water_0" pos="-3 -3 0.5"><geom name="water_0_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
@@ -126,7 +127,7 @@
     <body name="water_7" pos="-10 -10 0.5"><geom name="water_7_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_8" pos="-11 -11 0.5"><geom name="water_8_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_9" pos="-12 -12 0.5"><geom name="water_9_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
-    <body name="water_10" pos="-3 -3 0.5"><geom name="water_10_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
+    <!-- <body name="water_10" pos="-3 -3 0.5"><geom name="water_10_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_11" pos="-4 -4 0.5"><geom name="water_11_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_12" pos="-5 -5 0.5"><geom name="water_12_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_13" pos="-6 -6 0.5"><geom name="water_13_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
@@ -135,7 +136,7 @@
     <body name="water_16" pos="-9 -9 0.5"><geom name="water_16_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_17" pos="-10 -10 0.5"><geom name="water_17_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
     <body name="water_18" pos="-11 -11 0.5"><geom name="water_18_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
-    <body name="water_19" pos="-12 -12 0.5"><geom name="water_19_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body>
+    <body name="water_19" pos="-12 -12 0.5"><geom name="water_19_geom" size="0.5" type="sphere" rgba="0 0 1 1" conaffinity="0" contype="8"/></body> -->
 
     <!-- Heat Sources: contype 4 (Ghost), conaffinity 0 (Collides with nothing) -->
     <body name="heat_0" pos="0 3 0.5"><geom name="heat_0_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
@@ -143,24 +144,24 @@
     <body name="heat_2" pos="0 7 0.5"><geom name="heat_2_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_3" pos="0 7 0.5"><geom name="heat_3_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_4" pos="0 7 0.5"><geom name="heat_4_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
-    <body name="heat_5" pos="0 7 0.5"><geom name="heat_5_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
+    <!-- <body name="heat_5" pos="0 7 0.5"><geom name="heat_5_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_6" pos="0 3 0.5"><geom name="heat_6_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_7" pos="0 5 0.5"><geom name="heat_7_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_8" pos="0 7 0.5"><geom name="heat_8_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_9" pos="0 7 0.5"><geom name="heat_9_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
     <body name="heat_10" pos="0 7 0.5"><geom name="heat_10_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
-    <body name="heat_11" pos="0 7 0.5"><geom name="heat_11_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body>
+    <body name="heat_11" pos="0 7 0.5"><geom name="heat_11_geom" size="0.5" type="sphere" rgba="1 0 0 1" conaffinity="1" contype="1" mass="1000"/></body> -->
 
   </worldbody>
   <actuator>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_4" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_4" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_1" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_1" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_2" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_2" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_3" gear="150"/>
-    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_3" gear="150"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_4" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_4" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_1" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_1" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_2" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_2" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="hip_3" gear="30"/>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0" joint="ankle_3" gear="30"/>
   </actuator>
 
 </mujoco>
