@@ -44,41 +44,52 @@ class MLflowCallback(BaseCallback):
         self.iteration_count = 0
 
         # Buffers for iteration-based averaging
-        self.iteration_motor_activity = []
-        self.iteration_hungers = []
-        self.iteration_thirsts = []
-        self.iteration_temps = []
+        # self.iteration_motor_activity = []
+        # self.iteration_hungers = []
+        # self.iteration_thirsts = []
+        # self.iteration_temps = []
         self.iteration_episode_lengths = []
 
     def _on_step(self) -> bool:
         # Extract internal states from info
         infos = self.locals.get("infos")
-        actions = self.locals.get("actions")
-        current_step = self.num_timesteps
+        # actions = self.locals.get("actions")
+        # current_step = self.num_timesteps
+
+        # # Log day or night
+        # mlflow.log_metric("agent/is_night", infos[0]["time"]["is_night"], step=current_step)
 
         if infos:
             # Mean internal states across all parallel envs
-            step_hungers = np.mean([info["internal_state"]["hunger"] for info in infos])
-            step_thirsts = np.mean([info["internal_state"]["thirst"] for info in infos])
-            step_temps = np.mean(
-                [info["internal_state"]["temperature"] for info in infos]
-            )
+            # step_hungers = np.mean([info["internal_state"]["hunger"] for info in infos])
+            # step_thirsts = np.mean([info["internal_state"]["thirst"] for info in infos])
+            # step_temps = np.mean(
+            #     [info["internal_state"]["temperature"] for info in infos]
+            # )
             # Log action statistics
-            motor_actions = actions[:, :8]
-            step_rms_activity = np.sqrt(np.mean(np.square(motor_actions)))
-            # Log means to MLflow at each step
-            # Use 'agent/' prefix to separate from evaluation or other phases
-            mlflow.log_metric("agent/mean_hunger", step_hungers, step=current_step)
-            mlflow.log_metric("agent/mean_thirst", step_thirsts, step=current_step)
-            mlflow.log_metric("agent/mean_temperature", step_temps, step=current_step)
-            mlflow.log_metric(
-                "agent/motor_activity_rms", step_rms_activity, step=current_step
-            )
+            # motor_actions = actions[:, :8]
+            # step_rms_activity = np.sqrt(np.mean(np.square(motor_actions)))
+            # # Log stability metrics (average across envs)
+            # step_up_z = np.mean([info["stability"]["up_vector_z"] for info in infos])
+            # step_z_pos = np.mean([info["stability"]["z_pos"] for info in infos])
 
-            self.iteration_motor_activity.append(step_rms_activity)
-            self.iteration_hungers.append(step_hungers)
-            self.iteration_thirsts.append(step_thirsts)
-            self.iteration_temps.append(step_temps)
+            # # Log means to MLflow at each step
+            # # Use 'agent/' prefix to separate from evaluation or other phases
+            # mlflow.log_metric("agent/mean_hunger", step_hungers, step=current_step)
+            # mlflow.log_metric("agent/mean_thirst", step_thirsts, step=current_step)
+            # mlflow.log_metric("agent/mean_temperature", step_temps, step=current_step)
+            # mlflow.log_metric("agent/up_vector_z", step_up_z, step=current_step)
+            # mlflow.log_metric("agent/z_pos", step_z_pos, step=current_step)
+            # mlflow.log_metric(
+            #     "agent/motor_activity_rms", step_rms_activity, step=current_step
+            # )
+            # # Sweat count
+            # mlflow.log_metric("agent/sweat_count", np.sum([info["resources_consumed"]["sweating"] for info in infos]), step=current_step)
+
+            # self.iteration_motor_activity.append(step_rms_activity)
+            # self.iteration_hungers.append(step_hungers)
+            # self.iteration_thirsts.append(step_thirsts)
+            # self.iteration_temps.append(step_temps)
 
             # Log episode metrics when they finish
             for info in infos:
@@ -93,6 +104,12 @@ class MLflowCallback(BaseCallback):
                     mlflow.log_metric(
                         "episode/length", info["episode"]["l"], step=self.total_episodes
                     )
+                    # # Log termination reason
+                    # mlflow.log_metric(
+                    #     "episode/termination_reason", 
+                    #     info["stability"]["termination_reason"], 
+                    #     step=self.total_episodes
+                    # )
 
                     # Final drive states
                     # To see what is killing the agent
@@ -153,32 +170,32 @@ class MLflowCallback(BaseCallback):
         mlflow.log_metric(
             "iteration/total_resets", self.total_episodes, step=self.iteration_count
         )
-        mlflow.log_metric(
-            "iteration/mean_motor_activity",
-            np.mean(self.iteration_motor_activity),
-            step=self.iteration_count,
-        )
-        mlflow.log_metric(
-            "iteration/mean_hunger",
-            np.mean(self.iteration_hungers),
-            step=self.iteration_count,
-        )
-        mlflow.log_metric(
-            "iteration/mean_thirst",
-            np.mean(self.iteration_thirsts),
-            step=self.iteration_count,
-        )
-        mlflow.log_metric(
-            "iteration/mean_temp",
-            np.mean(self.iteration_temps),
-            step=self.iteration_count,
-        )
+        # mlflow.log_metric(
+        #     "iteration/mean_motor_activity",
+        #     np.mean(self.iteration_motor_activity),
+        #     step=self.iteration_count,
+        # )
+        # mlflow.log_metric(
+        #     "iteration/mean_hunger",
+        #     np.mean(self.iteration_hungers),
+        #     step=self.iteration_count,
+        # )
+        # mlflow.log_metric(
+        #     "iteration/mean_thirst",
+        #     np.mean(self.iteration_thirsts),
+        #     step=self.iteration_count,
+        # )
+        # mlflow.log_metric(
+        #     "iteration/mean_temp",
+        #     np.mean(self.iteration_temps),
+        #     step=self.iteration_count,
+        # )
 
         # Clear buffers for the next PPO iteration[cite: 1]
-        self.iteration_motor_activity = []
-        self.iteration_hungers = []
-        self.iteration_thirsts = []
-        self.iteration_temps = []
+        # self.iteration_motor_activity = []
+        # self.iteration_hungers = []
+        # self.iteration_thirsts = []
+        # self.iteration_temps = []
         self.iteration_episode_lengths = []
 
     def _on_training_end(self) -> None:
