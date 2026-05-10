@@ -67,12 +67,12 @@ class MLflowCallback(BaseCallback):
             motor_actions = actions[:, :8]
             step_rms_activity = np.sqrt(np.mean(np.square(motor_actions)))
             # Log means to MLflow at each step
-            # Use 'train/' prefix to separate from evaluation or other phases
-            mlflow.log_metric("train/mean_hunger", step_hungers, step=current_step)
-            mlflow.log_metric("train/mean_thirst", step_thirsts, step=current_step)
-            mlflow.log_metric("train/mean_temperature", step_temps, step=current_step)
+            # Use 'agent/' prefix to separate from evaluation or other phases
+            mlflow.log_metric("agent/mean_hunger", step_hungers, step=current_step)
+            mlflow.log_metric("agent/mean_thirst", step_thirsts, step=current_step)
+            mlflow.log_metric("agent/mean_temperature", step_temps, step=current_step)
             mlflow.log_metric(
-                "train/motor_activity_rms", step_rms_activity, step=current_step
+                "agent/motor_activity_rms", step_rms_activity, step=current_step
             )
 
             self.iteration_motor_activity.append(step_rms_activity)

@@ -32,6 +32,7 @@ from config_ppo import (
     PPO_VF_COEF,
     PPO_IMAGE_SIZE,
 )
+from config import REWARD_SCALE
 from utils.callbacks import MLflowCallback, MLflowOutputFormat, StepLoggerCallback
 from utils.utils import (
     CustomCombinedExtractor,
@@ -70,6 +71,13 @@ def train():
                 "norm_obs": False,
                 "norm_reward": False,
                 "image_size": PPO_IMAGE_SIZE,
+                "ent_coef": PPO_ENT_COEF,
+                "vf_coef": PPO_VF_COEF,
+                "target_kl": PPO_TARGET_KL,
+                "max_grad_norm": PPO_MAX_GRAD_NORM,
+                "gae_lambda": PPO_GAE_LAMBDA,
+                "clip_range": PPO_CLIP_RANGE,
+                "reward_scale": REWARD_SCALE,
             }
         )
 

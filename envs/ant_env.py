@@ -22,14 +22,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         xml_file="ant_env.xml",
         default_camera_config=DEFAULT_CAMERA_CONFIG,
         image_size=(64, 64),
-        hunger_decay=0.00015,
-        thirst_decay=0.00015,
-        action_heat_gain_rate=0.0,
-        heat_source_gain_rate=0.00015,
+        hunger_decay=0.0003,
+        thirst_decay=0.0003,
+        action_heat_gain_rate=0.00002,
+        heat_source_gain_rate=0.0005,
         night_cooling_rate=0.00015,
-        sweat_cooling_rate=0.0,
-        replenish_rate=0.1,
-        day_night_cycle_len=2_000,
+        sweat_cooling_rate=0.0001,
+        replenish_rate=0.25,
+        day_night_cycle_len=1000,
         arena_size=10.0,
         num_food=20,
         num_water=20,
@@ -189,8 +189,8 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             size=self.model.nq, low=-0.01, high=0.01
         )
         # Start at random positions in the arena, but not too close to the walls
-        qpos[0] = self.np_random.uniform(-self.arena_size + 1, self.arena_size - 1)
-        qpos[1] = self.np_random.uniform(-self.arena_size + 1, self.arena_size - 1)
+        qpos[0] = self.np_random.uniform(-self.arena_size + 2, self.arena_size - 2)
+        qpos[1] = self.np_random.uniform(-self.arena_size + 2, self.arena_size - 2)
 
         curr_w, curr_x, curr_y, curr_z = qpos[3:7]
         current_rot = st.Rotation.from_quat([curr_x, curr_y, curr_z, curr_w])
@@ -339,7 +339,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.food_ids:
             if body_id not in respawned_bodies:
                 food_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - food_pos) < 1.0 and self._is_in_front(food_pos):
+                if np.linalg.norm(ant_pos - food_pos) < 1.0:  #  and self._is_in_front(food_pos)
                     self.hunger += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -349,7 +349,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for body_id in self.water_ids:
             if body_id not in respawned_bodies:
                 water_pos = self.data.xpos[body_id][:2]
-                if np.linalg.norm(ant_pos - water_pos) < 1.0 and self._is_in_front(water_pos):
+                if np.linalg.norm(ant_pos - water_pos) < 1.0:  #  and self._is_in_front(water_pos):
                     self.thirst += self.replenish_rate
                     self._randomize_object_pos(body_id)
                     respawned_bodies.add(body_id)
@@ -359,7 +359,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Can get heated by multiple sources
         for heat_body_id in self.heat_ids:
             heat_pos = self.data.xpos[heat_body_id][:2]
-            if np.linalg.norm(ant_pos - heat_pos) < 3.0 and self._is_in_front(heat_pos):
+            if np.linalg.norm(ant_pos - heat_pos) < 1.0:  #  and self._is_in_front(heat_pos):
                 contact_heat += 1
 
         # Passive decay/gain
@@ -441,14 +441,12 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             or abs(self.temperature) > 0.99999
         )
 
-        # if not is_healthy:
-        #     print(f"Not healthy at step {self.current_step}: z_pos={z_pos:.2f}")
-        
-        # if limit_reached:
-        #     print(f"Homeostatic limit reached at step {self.current_step}:")
-        #     print(f"Hunger: {self.hunger:.2f}, Thirst: {self.thirst:.2f}, Temp: {self.temperature:.2f}")
+        z_pos = self.data.xpos[self.ant_body_id][2]
+        # Standard Ant healthy check is z in [0.2, 1.0]
+        # We use a slightly stricter 0.28 to catch flips early
+        is_flipped = z_pos < 0.28 or z_pos > 1.1
 
-        return bool(limit_reached)  # bool(not is_healthy) or 
+        return bool(limit_reached) or is_flipped
 
     @property
     def truncated(self):
