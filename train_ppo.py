@@ -89,7 +89,7 @@ def train():
         env = VecVideoRecorder(
             env,
             video_folder="./videos/",
-            record_video_trigger=lambda step: step % (PPO_N_STEPS) == 0,
+            record_video_trigger=lambda step: step % (PPO_N_STEPS * 5) == 0,
             video_length=2_000,
             name_prefix=run_name,
         )
@@ -114,8 +114,6 @@ def train():
             features_extractor_class=CustomCombinedExtractor,
             net_arch=dict(pi=[256, 64], vf=[256, 64]),  # Matches paper's architecture
             activation_fn=nn.Tanh,
-            squash_output=True,
-            log_std_init=-2,
             normalize_images=False,
         )
 
@@ -137,8 +135,6 @@ def train():
             vf_coef=PPO_VF_COEF,
             target_kl=PPO_TARGET_KL,  # Early stopping based on KL divergence
             max_grad_norm=PPO_MAX_GRAD_NORM,
-            use_sde=True,
-            sde_sample_freq=4,
             policy_kwargs=policy_kwargs,
             device=torch.accelerator.current_accelerator()
             if torch.accelerator.is_available()
@@ -150,7 +146,7 @@ def train():
         print(f"Starting training with {PPO_N_ENVS} environments...")
 
         checkpoint_callback = CheckpointCallback(
-            save_freq=PPO_N_STEPS,  # TODO Save every ~10 iterations of PPO
+            save_freq=PPO_N_STEPS * 5,  # TODO Save every ~10 iterations of PPO
             save_path="./models/",
             name_prefix=f"{run_name}_checkpoint",
             save_vecnormalize=True,
@@ -158,7 +154,9 @@ def train():
         )
 
         callbacks = CallbackList(
-            [MLflowCallback(), StepLoggerCallback(), checkpoint_callback]
+            [MLflowCallback(),
+            #  StepLoggerCallback(),
+             checkpoint_callback]
         )
 
         # Print observation and action space
