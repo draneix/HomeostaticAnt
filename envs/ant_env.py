@@ -21,18 +21,18 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         xml_file="ant_env.xml",
         default_camera_config=DEFAULT_CAMERA_CONFIG,
         image_size=(64, 64),
-        hunger_decay=0.0004,
-        thirst_decay=0.0004,
-        action_heat_gain_rate=0.00015,
+        hunger_decay=0.00015,
+        thirst_decay=0.00015,
+        action_heat_gain_rate=0.0001,
         heat_source_gain_rate=0.002,
         night_cooling_rate=0.0005,
-        sweat_cooling_rate=0.001,
+        sweat_cooling_rate=0.1,
         replenish_rate=0.1,
         day_night_cycle_len=1000,
-        arena_size=10.0,
-        num_food=10,
-        num_water=10,
-        num_heat=5,
+        arena_size=6.0,
+        num_food=4,
+        num_water=4,
+        num_heat=2,
         is_training=False,
         max_steps=40_000,
         render_mode="rgb_array",
@@ -58,7 +58,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.heat_source_gain_rate = heat_source_gain_rate
         self.night_cooling_rate = night_cooling_rate
         self.sweat_cooling_rate = sweat_cooling_rate
-        self.sweat_thirst_cost = sweat_cooling_rate * 2
+        self.sweat_thirst_cost = 0.0  # FIXME: Remove for now
         self.replenish_rate = replenish_rate
         self.day_night_cycle_len = day_night_cycle_len
         self.arena_size = arena_size
@@ -302,8 +302,8 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
 
         stats = [
             (f"Hunger: {self.hunger:.2f}", (0, 255, 0)),  # Green
-            (f"Thirst: {self.thirst:.2f}", (255, 0, 0)),  # Blue
-            (f"Temp:   {self.temperature:.2f}", (0, 0, 255)),  # Red
+            (f"Thirst: {self.thirst:.2f}", (0, 0, 255)),  # Blue
+            (f"Temp:   {self.temperature:.2f}", (255, 0, 0)),  # Red
             (f"Time:   {time_text}", time_color),
         ]
 
@@ -439,9 +439,15 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         if limit_reached:
             term_reason = 1  # homeostatic
         elif is_flipped:
-            term_reason = 2  # flipped
+            term_reason = 2  # flipped - just die immediately
+            self.hunger = -2
+            self.thirst = -2
+            self.temperature = -2
         elif is_height_invalid:
             term_reason = 3  # height
+            self.hunger = -2
+            self.thirst = -2
+            self.temperature = -2
 
         # Clipping state variables
         self.hunger = np.clip(self.hunger, -1.0, 1.0)

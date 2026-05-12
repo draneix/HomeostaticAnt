@@ -36,6 +36,7 @@ def make_env(
             xml_file=xml_file,
             image_size=image_size,
             is_training=is_training,
+            camera_id=0
         )
         set_random_seed(seed + rank)
         env = CustomObservationWrapper(env)

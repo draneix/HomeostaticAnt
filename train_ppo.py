@@ -46,6 +46,7 @@ if platform.system() == "Linux":
     os.environ["MUJOCO_GL"] = "egl"  # Use EGL for headless rendering on Linux
 
 os.environ["OMP_NUM_THREADS"] = "1"  # Limit PyTorch to use a single thread for CPU operations
+os.environ["MKL_NUM_THREADS"] = "1"  # Limit Intel MKL to use a single thread for CPU operations
 
 def train():
     # Experiment parameters
@@ -88,6 +89,25 @@ def train():
                 for i in range(PPO_N_ENVS)
             ],
             start_method="spawn" if platform.system() == "Windows" else "forkserver",
+        )
+
+        # mlflow logs
+        mlflow.log_params(
+            dict(
+                hunger_decay=env.get_attr("hunger_decay"),
+                thirst_decay=env.get_attr("thirst_decay"),
+                action_heat_gain_rate=env.get_attr("action_heat_gain_rate"),
+                heat_source_gain_rate=env.get_attr("heat_source_gain_rate"),
+                night_cooling_rate=env.get_attr("night_cooling_rate"),
+                sweat_cooling_rate=env.get_attr("sweat_cooling_rate"),
+                replenish_rate=env.get_attr("replenish_rate"),
+                day_night_cycle_len=env.get_attr("day_night_cycle_len"),
+                arena_size=env.get_attr("arena_size"),
+                num_food=env.get_attr("num_food"),
+                num_water=env.get_attr("num_water"),
+                num_heat=env.get_attr("num_heat"),
+                max_steps=env.get_attr("max_steps"),
+            )
         )
 
         # Monitor logs episode reward/length
