@@ -128,6 +128,11 @@ class MLflowCallback(BaseCallback):
                         info["internal_state"]["temperature"],
                         step=self.total_episodes,
                     )
+                    mlflow.log_metric(
+                        "episode/final_posture",
+                        info["stability"]["posture"],
+                        step=self.total_episodes,
+                    )
 
                     # Final resource consumption for the episode
                     mlflow.log_metric(

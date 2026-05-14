@@ -107,6 +107,7 @@ def train():
                 num_water=env.get_attr("num_water"),
                 num_heat=env.get_attr("num_heat"),
                 max_steps=env.get_attr("max_steps"),
+                posture_penalty_weight=env.get_attr("posture_penalty_weight"),
             )
         )
 
@@ -117,7 +118,7 @@ def train():
         env = VecVideoRecorder(
             env,
             video_folder="./videos/",
-            record_video_trigger=lambda step: step % (PPO_N_STEPS * 5) == 0,
+            record_video_trigger=lambda step: step % (PPO_N_STEPS * 10) == 0,
             video_length=2_000,
             name_prefix=run_name,
         )

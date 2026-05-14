@@ -1,4 +1,5 @@
 import random
+import math
 from pathlib import Path
 
 import mujoco
@@ -15,6 +16,19 @@ DEFAULT_CAMERA_CONFIG = {
 }
 
 
+def qtoeuler(q):
+    """ quaternion to Euler angle
+
+    :param q: quaternion
+    :return:
+    """
+    phi = math.atan2(2 * (q[0] * q[1] + q[2] * q[3]), 1 - 2 * (q[1] ** 2 + q[2] ** 2))
+    theta = math.asin(2 * (q[0] * q[2] - q[3] * q[1]))
+    # theta = -np.pi/2 + 2*math.atan2(math.sqrt(1 + 2*(q[0]*q[2] - q[1]*q[3])), math.sqrt(1 - 2*(q[0]*q[2]-q[1]*q[3])))
+    psi = math.atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
+    return np.array([phi, theta, psi])
+
+
 class HomeostaticAntEnv(AntEnv, EzPickle):
     def __init__(
         self,
@@ -23,13 +37,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.0001,
-        heat_source_gain_rate=0.002,
-        night_cooling_rate=0.0005,
-        sweat_cooling_rate=0.1,
+        action_heat_gain_rate=0.00015 / 8,
+        heat_source_gain_rate=0.0006,
+        night_cooling_rate=0.0003,
+        sweat_cooling_rate=0.00015,
         replenish_rate=0.1,
         day_night_cycle_len=1000,
         arena_size=6.0,
+        posture_penalty_weight=1.0,
         num_food=4,
         num_water=4,
         num_heat=2,
@@ -50,7 +65,6 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.thirst = 0.0
         self.temperature = 0.0
         self.current_step = 0
-        self.sweat_ind = 0.0  # For HUD visualization of sweating
 
         self.hunger_decay = hunger_decay
         self.thirst_decay = thirst_decay
@@ -65,6 +79,8 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         self.num_food = num_food
         self.num_water = num_water
         self.num_heat = num_heat
+        self.posture_penalty_weight = posture_penalty_weight
+        self.posture = 0.0
 
         self.food_consumed = 0
         self.water_consumed = 0
@@ -119,6 +135,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 "internal_state": spaces.Box(  # Internal variables
                     low=-1.0, high=1.0, shape=(3,), dtype=np.float32
                 ),
+                "heat_sensor": spaces.Box(  # Heat sensor: [local_x, local_y]
+                    low=-1.0, high=1.0, shape=(2,), dtype=np.float32
+                ),
             }
         )
 
@@ -136,6 +155,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             replenish_rate,
             day_night_cycle_len,
             arena_size,
+            posture_penalty_weight,
             num_food,
             num_water,
             num_heat,
@@ -174,18 +194,18 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             self.hunger = self.np_random.uniform(-(1 / 6), (1 / 6))
             self.thirst = self.np_random.uniform(-(1 / 6), (1 / 6))
             self.temperature = self.np_random.uniform(-(1 / 6), (1 / 6))
+            # self.posture = 0.0  # Usually starts upright
         else:
             self.hunger = 0.0
             self.thirst = 0.0
             self.temperature = 0.0
+            # self.posture = 0.0
 
         # Add if no heat
         if self.num_heat == 0:
             self.temperature = 0.0
 
         self.current_step = 0
-        self.sweat_ind = 0.0  # Uncomment if sweat visualization is needed
-
         self.food_consumed = 0
         self.water_consumed = 0
         self.heat_exposed_time = 0.0
@@ -222,7 +242,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         return self._get_obs()
 
     def _calculate_drive(self):
-        return self.hunger**2 + self.thirst**2 + self.temperature**2
+        
+        # Posture dynamics - Deviation from upright
+        # Using Euler angles (roll, pitch) to calculate tilt
+        # data.qpos[3:7] is torso orientation (w, x, y, z)
+        self.posture = np.square(qtoeuler(self.data.qpos[3:7])[:2] - qtoeuler([1.0, 0.0, 0.0, 0.0])[:2]).sum()
+        # posture is the magnitude of roll and pitch deviation
+        return self.hunger**2 + self.thirst**2 + self.temperature**2 + self.posture_penalty_weight * self.posture
+
 
     def _randomize_object_pos(self, body_id):
         if body_id == -1:
@@ -252,14 +279,48 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                     pos_is_valid = False
                     break
 
+    def _get_heat_sensor_obs(self):
+        """
+        Detects the nearest heat source within 1.0m and returns the local direction.
+        Returns [0, 0] if no heat source is within range.
+        """
+        ant_pos = self.data.xpos[self.ant_body_id][:2]
+        nearest_heat_dist = 1.0
+        nearest_heat_pos = None
+
+        for body_id in self.heat_ids:
+            heat_pos = self.data.xpos[body_id][:2]
+            dist = np.linalg.norm(ant_pos - heat_pos)
+            if dist < nearest_heat_dist:
+                nearest_heat_dist = dist
+                nearest_heat_pos = heat_pos
+
+        if nearest_heat_pos is None:
+            return np.array([0.0, 0.0], dtype=np.float32)
+
+        # Vector from Ant to Heat in world coordinates
+        delta_world = nearest_heat_pos - ant_pos
+        
+        # Transform to local frame (torso's rotation)
+        # xmat is a 9-element array (3x3 rotation matrix)
+        rot_mat = self.data.xmat[self.ant_body_id].reshape(3, 3)
+        # Local X (Forward) and Local Y (Left) projections
+        local_x = np.dot(delta_world, rot_mat[:2, 0])
+        local_y = np.dot(delta_world, rot_mat[:2, 1])
+        
+        # Normalize to unit vector for direction only
+        direction = np.array([local_x, local_y], dtype=np.float32)
+        norm = np.linalg.norm(direction)
+        if norm > 1e-6:
+            direction /= norm
+            
+        return direction
+
     def _get_obs(self):
         # This is the basic proprioceptive observation from AntEnv
         # OBS_SPACE_DIM shape about the body position, velocity, and joint angles
-        proprio_obs = AntEnv._get_obs(
-            self
-        )[
-            :OBS_SPACE_DIM
-        ]  # Only take the original proprioceptive part, not the resource positions we added in the XML file
+        # Only take the original proprioceptive part, not the resource positions we added in the XML file
+        proprio_obs = AntEnv._get_obs(self)[:OBS_SPACE_DIM]
 
         # Render vision observations
         pov_image_rgb, pov_image_depth = self.mux_render(camera_name="pov")
@@ -280,6 +341,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 [self.hunger, self.thirst, self.temperature],
                 dtype=np.float32,  # internal variables
             ),
+            "heat_sensor": self._get_heat_sensor_obs(),
         }
 
     def _add_hud(self, img):
@@ -304,6 +366,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             (f"Hunger: {self.hunger:.2f}", (0, 255, 0)),  # Green
             (f"Thirst: {self.thirst:.2f}", (0, 0, 255)),  # Blue
             (f"Temp:   {self.temperature:.2f}", (255, 0, 0)),  # Red
+            # (f"Posture:{self.posture:.2f}", (255, 255, 255)),  # White
             (f"Time:   {time_text}", time_color),
         ]
 
@@ -407,12 +470,9 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             self.heat_exposed_time += 1.0 * contact_heat
 
         # Update sweat visualization (lingering effect for HUD)
-        # Sweat is binary
-        self.sweat_ind = sweat_action
-
         if sweat_action > 0.0:
-            self.temperature -= self.sweat_cooling_rate
-            self.thirst -= self.sweat_thirst_cost
+            self.temperature -= (sweat_action * self.sweat_cooling_rate)
+            # self.thirst -= self.sweat_thirst_cost
             self.model.geom_rgba[
                 mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, "torso_geom")
             ] = [0.2, 0.6, 1.0, 1.0]  # Change color to indicate sweating
@@ -482,6 +542,7 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
                 "up_vector_z": up_vector_z,
                 "z_pos": z_pos,
                 "termination_reason": term_reason,
+                "posture": self.posture,
             },
         }
 
@@ -514,14 +575,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         # Orientation check (True Flip Check)
         # xmat[8] is the world-Z component of the torso's local Z-axis (Up)
         # 1.0 = upright, 0.0 = on side, -1.0 = upside down
-        up_vector_z = self.data.xmat[self.ant_body_id][8]
-        is_flipped = up_vector_z < 0.5  # Tilted more than 60 degrees
+        # up_vector_z = self.data.xmat[self.ant_body_id][8]
+        # is_flipped = up_vector_z < 0.5  # Tilted more than 60 degrees
 
         # # Height check
         # z_pos = self.data.xpos[self.ant_body_id][2]
         # is_too_low = z_pos < 0.2 or z_pos > 1.0
 
-        return bool(limit_reached) or is_flipped  # or is_too_low
+        return bool(limit_reached) #  or is_flipped or is_too_low
 
     @property
     def truncated(self):
