@@ -78,14 +78,14 @@ class CustomCombinedExtractor(BaseFeaturesExtractor):
                 n_input_channels = subspace.shape[0]
                 # Deepened CNN for range, optimized filter sizes for training speed
                 cnn_layers = nn.Sequential(
-                    nn.Conv2d(n_input_channels, 32, kernel_size=4, stride=2, padding=1),
+                    nn.Conv2d(n_input_channels, 32, kernel_size=3, stride=2, padding=1),
                     nn.ELU(),
-                    nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+                    nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
                     nn.ELU(),
-                    nn.Conv2d(64, 64, kernel_size=4, stride=2, padding=1),
-                    nn.ELU(),
-                    nn.Conv2d(64, 64, kernel_size=4, stride=2, padding=1),
-                    nn.ELU(),
+                    # nn.Conv2d(64, 64, kernel_size=4, stride=2, padding=1),
+                    # nn.ELU(),
+                    # nn.Conv2d(64, 64, kernel_size=4, stride=2, padding=1),
+                    # nn.ELU(),
                     nn.Flatten(),
                 )
 
