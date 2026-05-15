@@ -104,12 +104,12 @@ class MLflowCallback(BaseCallback):
                     mlflow.log_metric(
                         "episode/length", info["episode"]["l"], step=self.total_episodes
                     )
-                    # # Log termination reason
-                    # mlflow.log_metric(
-                    #     "episode/termination_reason", 
-                    #     info["stability"]["termination_reason"], 
-                    #     step=self.total_episodes
-                    # )
+                    # Log termination reason
+                    mlflow.log_metric(
+                        "episode/termination_reason", 
+                        info["stability"]["termination_reason"], 
+                        step=self.total_episodes
+                    )
 
                     # Final drive states
                     # To see what is killing the agent
