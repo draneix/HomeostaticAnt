@@ -37,14 +37,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         image_size=(64, 64),
         hunger_decay=0.00015,
         thirst_decay=0.00015,
-        action_heat_gain_rate=0.00015 / 8,
+        action_heat_gain_rate=0.00015 / 4,
         heat_source_gain_rate=0.0006,
         night_cooling_rate=0.0003,
         sweat_cooling_rate=0.00015,
         replenish_rate=0.1,
         day_night_cycle_len=1000,
         arena_size=6.0,
-        posture_penalty_weight=1.0,
+        posture_penalty_weight=0.005,
         num_food=4,
         num_water=4,
         num_heat=2,
@@ -500,14 +500,14 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             term_reason = 1  # homeostatic
         elif is_flipped:
             term_reason = 2  # flipped - just die immediately
-            self.hunger = -2
-            self.thirst = -2
-            self.temperature = -2
+            # self.hunger = -2
+            # self.thirst = -2
+            # self.temperature = -2
         elif is_height_invalid:
             term_reason = 3  # height
-            self.hunger = -2
-            self.thirst = -2
-            self.temperature = -2
+            # self.hunger = -2
+            # self.thirst = -2
+            # self.temperature = -2
 
         # Clipping state variables
         self.hunger = np.clip(self.hunger, -1.0, 1.0)
