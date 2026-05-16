@@ -37,11 +37,12 @@ class MLflowCallback(BaseCallback):
     Callback for logging artifacts or additional metrics to MLflow.
     """
 
-    def __init__(self, verbose=0):
+    def __init__(self, use_heat=False, verbose=0):
         super().__init__(verbose)
         self.total_episodes = 0
         self.total_resets = 0
         self.iteration_count = 0
+        self.use_heat = use_heat
 
         # Buffers for iteration-based averaging
         # self.iteration_motor_activity = []
@@ -124,11 +125,6 @@ class MLflowCallback(BaseCallback):
                         step=self.total_episodes,
                     )
                     mlflow.log_metric(
-                        "episode/final_temp",
-                        info["internal_state"]["temperature"],
-                        step=self.total_episodes,
-                    )
-                    mlflow.log_metric(
                         "episode/final_posture",
                         info["stability"]["posture"],
                         step=self.total_episodes,
@@ -145,11 +141,18 @@ class MLflowCallback(BaseCallback):
                         info["resources_consumed"]["water"],
                         step=self.total_episodes,
                     )
-                    mlflow.log_metric(
-                        "episode/total_heat_exposed_time",
-                        info["resources_consumed"]["heat_exposure_time"],
-                        step=self.total_episodes,
-                    )
+
+                    if self.use_heat:
+                        mlflow.log_metric(
+                            "episode/final_temp",
+                            info["internal_state"]["temperature"],
+                            step=self.total_episodes,
+                        )
+                        mlflow.log_metric(
+                            "episode/total_heat_exposed_time",
+                            info["resources_consumed"]["heat_exposure_time"],
+                            step=self.total_episodes,
+                        )
 
         return True
 
@@ -213,9 +216,10 @@ class StepLoggerCallback(BaseCallback):
     Callback for logging every single step to a CSV file for high-granularity analysis.
     """
 
-    def __init__(self, filename=f"logs/step_logs_{dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", verbose=0):
+    def __init__(self, filename=f"logs/step_logs_{dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv", verbose=0, use_heat=False):
         super().__init__(verbose)
         self.filename = filename
+        self.use_heat = use_heat
         self.data = []
         os.makedirs(os.path.dirname(self.filename), exist_ok=True)
 
@@ -236,11 +240,10 @@ class StepLoggerCallback(BaseCallback):
                 "reward": np.mean(rewards),
                 "hunger": np.mean([i["internal_state"]["hunger"] for i in infos]),
                 "thirst": np.mean([i["internal_state"]["thirst"] for i in infos]),
-                "temperature": np.mean(
-                    [i["internal_state"]["temperature"] for i in infos]
-                ),
                 "motor_activity": rms_activity,
             }
+            if self.use_heat:
+                step_data["temperature"] = np.mean([i["internal_state"]["temperature"] for i in infos])
             self.data.append(step_data)
 
             # Periodically flush to disk (every 1000 steps) to save memory[cite: 5]

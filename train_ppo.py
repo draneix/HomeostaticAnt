@@ -69,7 +69,7 @@ def train():
                 "batch_size": PPO_BATCH_SIZE,
                 "n_epochs": PPO_N_EPOCHS,
                 "gamma": PPO_GAMMA,
-                "norm_obs": False,
+                "norm_obs": True,
                 "norm_reward": False,
                 "image_size": PPO_IMAGE_SIZE,
                 "ent_coef": PPO_ENT_COEF,
@@ -78,7 +78,6 @@ def train():
                 "max_grad_norm": PPO_MAX_GRAD_NORM,
                 "gae_lambda": PPO_GAE_LAMBDA,
                 "clip_range": PPO_CLIP_RANGE,
-                "reward_scale": REWARD_SCALE,
             }
         )
 
@@ -94,20 +93,25 @@ def train():
         # mlflow logs
         mlflow.log_params(
             dict(
+                day_night_cycle_len=env.get_attr("day_night_cycle_len"),
+                arena_size=env.get_attr("arena_size"),
+                max_steps=env.get_attr("max_steps"),                num_food=env.get_attr("num_food"),
+                num_water=env.get_attr("num_water"),
+                num_heat=env.get_attr("num_heat"),
+                object_spacing=env.get_attr("object_spacing"),
+                object_interaction_dist=env.get_attr("object_interaction_dist"),
+                heat_sensor_range=env.get_attr("heat_sensor_range"),
+                reward_scale=env.get_attr("reward_scale"),
                 hunger_decay=env.get_attr("hunger_decay"),
                 thirst_decay=env.get_attr("thirst_decay"),
+                replenish_rate=env.get_attr("replenish_rate"),
                 action_heat_gain_rate=env.get_attr("action_heat_gain_rate"),
                 heat_source_gain_rate=env.get_attr("heat_source_gain_rate"),
                 night_cooling_rate=env.get_attr("night_cooling_rate"),
                 sweat_cooling_rate=env.get_attr("sweat_cooling_rate"),
-                replenish_rate=env.get_attr("replenish_rate"),
-                day_night_cycle_len=env.get_attr("day_night_cycle_len"),
-                arena_size=env.get_attr("arena_size"),
-                num_food=env.get_attr("num_food"),
-                num_water=env.get_attr("num_water"),
-                num_heat=env.get_attr("num_heat"),
-                max_steps=env.get_attr("max_steps"),
                 posture_penalty_weight=env.get_attr("posture_penalty_weight"),
+                posture_drive_penalty=env.get_attr("posture_drive_penalty"),
+                movement_penalty_weight=env.get_attr("movement_penalty_weight"),
             )
         )
 
