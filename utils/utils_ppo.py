@@ -6,12 +6,15 @@ from torchrl.envs import (
 )
 from envs.ant_env import HomeostaticAntEnv
 import math
-from torch.distributions import Beta, TransformedDistribution, AffineTransform
+from torch.distributions import Beta, TransformedDistribution, AffineTransform, Independent
+from config import DEVICE
 
 
 def make_env(**kwargs):
     env = HomeostaticAntEnv(is_training=True, **kwargs)
-    return GymWrapper(env, device="cpu")
+    env = GymWrapper(env, device="cpu")
+    env.auto_register_info_dict()
+    return env
 
 
 class VisionEncoder(nn.Module):
@@ -92,4 +95,5 @@ class AntPPOCritic(nn.Module):
 def BetaScaled(concentration1, concentration0):
     base_dist = Beta(concentration1, concentration0)
     transform = AffineTransform(loc=-1.0, scale=2.0)
-    return TransformedDistribution(base_dist, [transform])
+    transform_dist = TransformedDistribution(base_dist, [transform])
+    return Independent(transform_dist, reinterpreted_batch_ndims=1)

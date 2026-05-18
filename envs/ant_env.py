@@ -597,26 +597,42 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
             self.render()
 
         info = {
-            "time": {"timestep": self.current_step, "is_night": is_night},
-            "internal_state": {
-                "hunger": self.hunger,
-                "thirst": self.thirst,
-            },
-            "resources_consumed": {
-                "food": self.food_consumed,
-                "water": self.water_consumed,
-            },
-            "stability": {
-                "up_vector_z": up_vector_z,
-                "z_pos": z_pos,
-                "termination_reason": term_reason,
-                "posture": self.posture,
-            },
+            "timestep": np.array(self.current_step),
+            "is_night": np.array(is_night),
+            "hunger": np.array(self.hunger),
+            "thirst": np.array(self.thirst),
+            "food_consumed": np.array(self.food_consumed),
+            "water_consumed": np.array(self.water_consumed),
+            "up_vector_z": np.array(up_vector_z),
+            "z_pos": np.array(z_pos),
+            "termination_reason": np.array(term_reason),
+            "posture": np.array(self.posture),
         }
+
+        # info = {
+        #     "time": {"timestep": self.current_step, "is_night": is_night},
+        #     "internal_state": {
+        #         "hunger": self.hunger,
+        #         "thirst": self.thirst,
+        #     },
+        #     "resources_consumed": {
+        #         "food": self.food_consumed,
+        #         "water": self.water_consumed,
+        #     },
+        #     "stability": {
+        #         "up_vector_z": up_vector_z,
+        #         "z_pos": z_pos,
+        #         "termination_reason": term_reason,
+        #         "posture": self.posture,
+        #     },
+        # }
         if self.num_heat > 0:
-            info["internal_state"]["temperature"] = self.temperature
-            info["resources_consumed"]["heat_exposure_time"] = self.heat_exposed_time
-            info["resources_consumed"]["sweating"] = 1.0 if sweat_action > 0.0 else 0.0
+            # info["internal_state"]["temperature"] = self.temperature
+            # info["resources_consumed"]["heat_exposure_time"] = self.heat_exposed_time
+            # info["resources_consumed"]["sweating"] = 1.0 if sweat_action > 0.0 else 0.0
+            info["temperature"] = self.temperature
+            info["heat_exposed_time"] = self.heat_exposed_time
+            info["sweating"] = 1.0 if sweat_action > 0.0 else 0.0
 
         # Return the environment image in info for vieweing
         # Add visual HUD to the environment image for debugging/monitoring

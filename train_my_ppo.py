@@ -6,14 +6,15 @@ import mlflow
 import torch
 from tensordict.nn import TensorDictModule, InteractionType
 from torchrl.collectors import Collector
-# from torchrl.data.replay_buffers import ReplayBuffer
-# from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-# from torchrl.data.replay_buffers.storages import LazyTensorStorage
+from torchrl.data.replay_buffers import ReplayBuffer
+from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+from torchrl.data.replay_buffers.storages import LazyTensorStorage, LazyMemmapStorage
 from torchrl.envs import Compose, EnvCreator, ParallelEnv, TransformedEnv
 from torchrl.envs.transforms import (
     CatFrames,
     ObservationNorm,
     PermuteTransform,
+    RewardSum,
     StepCounter,
 )
 from torchrl.modules import ProbabilisticActor, ValueOperator
@@ -22,11 +23,10 @@ from torchrl.objectives.value import GAE
 from torchrl.record.loggers import MLFlowLogger
 from tqdm.auto import tqdm
 
-from config import MAX_STEPS_PER_EPISODE
+from config import MAX_STEPS_PER_EPISODE, DEVICE
 from config_ppo import (
     PPO_BATCH_SIZE,
     PPO_CLIP_RANGE,
-    PPO_DEVICE,
     PPO_ENT_COEF,
     PPO_FRAMES_PER_BATCH,
     PPO_GAE_LAMBDA,
@@ -52,6 +52,7 @@ def main():
     else:
         action_dim = 9
         internal_state_dim = 3
+    print(f"Using {DEVICE}")
 
     # ------------ Setup environment ------------
     # Create parallel environments
@@ -65,6 +66,7 @@ def main():
             PermuteTransform(in_keys=["vision"], dims=(-1, -3, -2)),
             StepCounter(max_steps=MAX_STEPS_PER_EPISODE),
             CatFrames(in_keys=["vision"], dim=-3, N=3),
+            RewardSum(),
         ),
     )
     env.set_seed(0)
@@ -81,7 +83,7 @@ def main():
             "N_ENVS": PPO_N_ENVS,
             "MAX_STEPS_PER_EPISODE": MAX_STEPS_PER_EPISODE,
             "PPO_CLIP_RANGE": PPO_CLIP_RANGE,
-            "PPO_DEVICE": PPO_DEVICE,
+            "PPO_DEVICE": DEVICE,
             "PPO_ENT_COEF": PPO_ENT_COEF,
             "PPO_FRAMES_PER_BATCH": PPO_FRAMES_PER_BATCH,
             "PPO_MAX_GRAD_NORM": PPO_MAX_GRAD_NORM,
@@ -101,6 +103,7 @@ def main():
     # ------------ PPO setup ------------
     # Actor
     actor = AntPPOActor(action_dim=action_dim, internal_state_dim=internal_state_dim)
+    # actor = torch.compile(actor)
     actor_td_module = TensorDictModule(
         actor,
         in_keys=["vision", "proprioception", "internal_state"],
@@ -113,14 +116,15 @@ def main():
         distribution_class=BetaScaled,
         return_log_prob=True,
         default_interaction_type=InteractionType.RANDOM,
-    ).to(PPO_DEVICE)
+    ).to(DEVICE)
 
     # Critic
     critic = AntPPOCritic(internal_state_dim=internal_state_dim)
+    # critic = torch.compile(critic)
     value = ValueOperator(
         module=critic,
         in_keys=["vision", "proprioception", "internal_state"],
-    ).to(PPO_DEVICE)
+    ).to(DEVICE)
 
     # ------------ Collector ------------
     collector = Collector(
@@ -128,13 +132,13 @@ def main():
         policy,
         frames_per_batch=PPO_FRAMES_PER_BATCH,
         total_frames=PPO_TOTAL_TIMESTEPS,
-        device=PPO_DEVICE,
+        device="cpu",
         storing_device="cpu",  # KEY: Store rollout buffer on CPU to save CUDA memory
     )
-    # replay_buffer = ReplayBuffer(
-    #     storage=LazyTensorStorage(max_size=PPO_FRAMES_PER_BATCH),
-    #     sampler=SamplerWithoutReplacement(),
-    # )
+    replay_buffer = ReplayBuffer(
+        storage=LazyMemmapStorage(max_size=PPO_FRAMES_PER_BATCH, device="cpu"),
+        sampler=SamplerWithoutReplacement(),
+    )
 
     # ------------ Losses ------------
     loss = ClipPPOLoss(
@@ -166,83 +170,80 @@ def main():
         pbar.update(1)
         done_mask = data["next", "done"].squeeze(-1)
         if done_mask.any():
-            # Access the nested 'info' tensorDict for only the completed steps
-            # This will preserve a 1D sequence of terminal frames regardless of environment vectorization
+            # Use data["next"] for RewardSum and StepCounter, and info for the rest
+            terminal_next = data["next"][done_mask]
             terminal_info = data["next", "info"][done_mask]
 
-            for ep_idx in range(terminal_info.shape[0]):
+            for ep_idx in range(terminal_next.shape[0]):
                 total_episodes += 1
                 info_step = terminal_info[ep_idx]
+                next_step = terminal_next[ep_idx]
 
-                # Extract the monitored episode metrics
-                ep_len = info_step["episode", "l"].item()
+                # Extract the monitored episode metrics from transforms
+                ep_len = next_step["step_count"].item()
+                ep_reward = next_step["episode_reward"].item()
                 iteration_episode_lengths.append(ep_len)
 
                 # Log individual episode values using total_episodes as the step axis
-                logger.log_scalar(
-                    "episode/reward",
-                    info_step["episode", "r"].item(),
-                    step=total_episodes,
-                )
+                logger.log_scalar("episode/reward", ep_reward, step=total_episodes)
                 logger.log_scalar("episode/length", ep_len, step=total_episodes)
                 logger.log_scalar(
                     "episode/termination_reason",
-                    info_step["stability", "termination_reason"].item(),
+                    info_step["termination_reason"].item(),
                     step=total_episodes,
                 )
 
                 # Final drive states
                 logger.log_scalar(
                     "episode/final_hunger",
-                    info_step["internal_state", "hunger"].item(),
+                    info_step["hunger"].item(),
                     step=total_episodes,
                 )
                 logger.log_scalar(
                     "episode/final_thirst",
-                    info_step["internal_state", "thirst"].item(),
+                    info_step["thirst"].item(),
                     step=total_episodes,
                 )
                 logger.log_scalar(
                     "episode/final_posture",
-                    info_step["stability", "posture"].item(),
+                    info_step["posture"].item(),
                     step=total_episodes,
                 )
 
                 # Final resource consumption
                 logger.log_scalar(
                     "episode/total_food_consumed",
-                    info_step["resources_consumed", "food"].item(),
+                    info_step["food_consumed"].item(),
                     step=total_episodes,
                 )
                 logger.log_scalar(
                     "episode/total_water_consumed",
-                    info_step["resources_consumed", "water"].item(),
+                    info_step["water_consumed"].item(),
                     step=total_episodes,
                 )
 
                 if num_heat > 0:
                     logger.log_scalar(
                         "episode/final_temp",
-                        info_step["internal_state", "temperature"].item(),
+                        info_step["temperature"].item(),
                         step=total_episodes,
                     )
                     logger.log_scalar(
                         "episode/total_heat_exposed_time",
-                        info_step["resources_consumed", "heat_exposure_time"].item(),
+                        info_step["heat_exposed_time"].item(),
                         step=total_episodes,
                     )
         iteration_count += 1
         if iteration_count % 10 == 0 and iteration_count < (total_batches // 2):
             env.transform[0].step(data)
-        avg_survival = (
-            sum(iteration_episode_lengths) / len(iteration_episode_lengths)
-            if iteration_episode_lengths
-            else 0.0
-        )
-        # Log global paper metrics using iteration_count as the step axis
-        logger.log_scalar(
-            "iteration/avg_survival_length", avg_survival, step=iteration_count
-        )
+        
+        if iteration_episode_lengths:
+            avg_survival = sum(iteration_episode_lengths) / len(iteration_episode_lengths)
+            # Log global paper metrics using iteration_count as the step axis
+            logger.log_scalar(
+                "iteration/avg_survival_length", avg_survival, step=iteration_count
+            )
+        
         logger.log_scalar(
             "iteration/total_resets", total_episodes, step=iteration_count
         )
@@ -251,51 +252,41 @@ def main():
         iteration_episode_lengths = []
         aggregated_losses = defaultdict(list)
         for _ in range(PPO_N_EPOCHS):
-            # === MOVED INSIDE THE EPOCH LOOP ===
-            # Re-compute Values in chunks to avoid CUDA OOM using the FRESHLY UPDATED value network
-            data.set("state_value", torch.zeros(data.shape, device="cpu"))
-            with torch.no_grad():
-                for sub_data in data.split(PPO_MINIBATCH_SIZE):
-                    sub_data.copy_(value(sub_data.to(PPO_DEVICE)).to("cpu"))
+            adv_module(data.to("cpu"))
+            data_view = data.reshape(-1).cpu()
+            replay_buffer.extend(data_view)
+            optim.zero_grad()
+            cumulative_size = 0
+            for _ in range(PPO_FRAMES_PER_BATCH // PPO_MINIBATCH_SIZE):
+                subdata = replay_buffer.sample(PPO_MINIBATCH_SIZE)
+                loss_vals = loss(subdata.to(DEVICE))
 
-            # Re-compute GAE on CPU while data is still in its structured, chronological trajectory form
-            data = adv_module(data)
-            # 3. Randomize order AFTER GAE calculation (safely breaking temporal correlations for training)
-            perm = torch.randperm(data.shape[0])
-            data_shuffled = data[perm]
+                aggregated_losses["actor_loss"].append(
+                    loss_vals["loss_objective"].item()
+                )
+                aggregated_losses["critic_loss"].append(
+                    loss_vals["loss_critic"].item()
+                )
+                aggregated_losses["entropy_loss"].append(
+                    loss_vals["loss_entropy"].item()
+                )
 
-            # 4. Iterate through effective mini-batches
-            for mini_batch in data_shuffled.split(PPO_BATCH_SIZE):
-                optim.zero_grad()
+                # DYNAMIC FIX: Weight the loss by the actual ratio of sub-batch to mini-batch size
+                loss_total = (
+                    loss_vals["loss_objective"]
+                    + loss_vals["loss_critic"]
+                    + loss_vals["loss_entropy"]
+                )
+                loss_total = loss_total * (subdata.shape[0] / PPO_BATCH_SIZE)
+                loss_total.backward()
+                cumulative_size += subdata.shape[0]
+                if cumulative_size >= PPO_BATCH_SIZE:
+                    # Step the optimizer after all sub-batches have accumulated their gradients
+                    torch.nn.utils.clip_grad_norm_(loss.parameters(), PPO_MAX_GRAD_NORM)
+                    optim.step()
+                    optim.zero_grad()
+                    cumulative_size = 0
 
-                # GRADIENT ACCUMULATION: Split mini-batches into smaller sub-batches for the GPU
-                for sub_batch in mini_batch.split(PPO_MINIBATCH_SIZE):
-                    sub_batch_gpu = sub_batch.to(PPO_DEVICE)
-                    loss_vals = loss(sub_batch_gpu)
-
-                    aggregated_losses["actor_loss"].append(
-                        loss_vals["loss_objective"].item()
-                    )
-                    aggregated_losses["critic_loss"].append(
-                        loss_vals["loss_critic"].item()
-                    )
-                    aggregated_losses["entropy_loss"].append(
-                        loss_vals["loss_entropy"].item()
-                    )
-
-                    # DYNAMIC FIX: Weight the loss by the actual ratio of sub-batch to mini-batch size
-                    loss_scale = sub_batch.shape[0] / mini_batch.shape[0]
-                    loss_total = (
-                        loss_vals["loss_objective"]
-                        + loss_vals["loss_critic"]
-                        + loss_vals["loss_entropy"]
-                    ) * loss_scale
-
-                    loss_total.backward()
-
-                # Step the optimizer after all sub-batches have accumulated their gradients
-                torch.nn.utils.clip_grad_norm_(loss.parameters(), PPO_MAX_GRAD_NORM)
-                optim.step()
         for loss_name, loss_list in aggregated_losses.items():
             logger.log_scalar(
                 f"train/{loss_name}",
@@ -303,6 +294,7 @@ def main():
                 step=iteration_count,
             )
         scheduler.step()
+        replay_buffer.empty()
 
     # ------------- Save model -------------
     model_path = f"models/ppo_ant_{dt.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pt"
@@ -313,11 +305,18 @@ def main():
         },
         model_path,
     )
-    with mlflow.start_run(run_id=logger.run_id):
-        mlflow.pytorch.log_model(policy.state_dict(), "policy")
-        mlflow.pytorch.log_model(value.state_dict(), "value")
+    # with mlflow.start_run(run_id=logger.run_id):
+    #     mlflow.pytorch.log_model(policy.state_dict(), "policy")
+    #     mlflow.pytorch.log_model(value.state_dict(), "value")
 
 
 if __name__ == "__main__":
     os.makedirs("models", exist_ok=True)
+    # Put this at the very top of your script before importing torchrl
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+
+    # Also explicitly set it in python if needed
+    torch.set_num_threads(1)
     main()
+    print("Completed training and saved model.")
