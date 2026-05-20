@@ -46,9 +46,9 @@ class VisionEncoder(nn.Module):
         return x
 
 class AntPPOActor(nn.Module):
-    def __init__(self, action_dim, internal_state_dim):
+    def __init__(self, vision_encoder, action_dim, internal_state_dim):
         super().__init__()
-        self.vision_encoder = VisionEncoder(input_channels=12, output_dim=200)
+        self.vision_encoder = vision_encoder
         self.net = nn.Sequential(
             nn.Linear(200 + 27 + internal_state_dim, 300),
             nn.LayerNorm(300),
@@ -59,10 +59,10 @@ class AntPPOActor(nn.Module):
             nn.Linear(200, action_dim * 2)  # 2 parameters for each action
         )
 
-    def forward(self, vision_features, proprioception, internal_state):
-        vision_features = self.vision_encoder(vision_features)
-        vision_features = vision_features.detach()
-        x = torch.cat([vision_features, proprioception, internal_state], dim=-1)
+    def forward(self, vision, proprioception, internal_state):
+        vision = self.vision_encoder(vision)
+        vision = vision.detach()
+        x = torch.cat([vision, proprioception, internal_state], dim=-1)
         x = self.net(x)
         alpha, beta = torch.chunk(x, 2, dim=-1)
         alpha = F.softplus(alpha) + 1
@@ -71,9 +71,9 @@ class AntPPOActor(nn.Module):
 
 
 class AntPPOCritic(nn.Module):
-    def __init__(self, internal_state_dim=2):
+    def __init__(self, vision_encoder, internal_state_dim=2):
         super().__init__()
-        self.vision_encoder = VisionEncoder(input_channels=12, output_dim=200)
+        self.vision_encoder = vision_encoder
         self.net = nn.Sequential(
             nn.Linear(200 + 27 + internal_state_dim, 400),
             nn.LayerNorm(400),
@@ -84,10 +84,10 @@ class AntPPOCritic(nn.Module):
             nn.Linear(300, 1)  # Output a single value for the state value
         )
 
-    def forward(self, vision_features, proprioception, internal_state):
+    def forward(self, vision, proprioception, internal_state):
         # No need to detach vision here
-        vision_features = self.vision_encoder(vision_features)
-        x = torch.cat([vision_features, proprioception, internal_state], dim=-1)
+        vision = self.vision_encoder(vision)
+        x = torch.cat([vision, proprioception, internal_state], dim=-1)
         value = self.net(x)
         return value
 

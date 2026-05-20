@@ -1,5 +1,3 @@
-import torch
-
 # PPO configs
 PPO_N_EPOCHS = 10
 PPO_LEARNING_RATE_START = 1e-4
@@ -8,7 +6,7 @@ PPO_BATCH_SIZE = 2**12
 PPO_MINIBATCH_SIZE = 2**7
 PPO_GAMMA = 0.99
 PPO_N_STEPS = 2**11  # Rollout buffer size per environment
-PPO_N_ENVS = 2**1
+PPO_N_ENVS = 2**3
 PPO_ENT_COEF = 0.005
 PPO_VF_COEF = 0.5
 PPO_TARGET_KL = None    # 0.02

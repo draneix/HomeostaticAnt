@@ -521,10 +521,10 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         for obj in list(self.object):
             type_gen, x, y = obj
             if np.linalg.norm(ant_pos - np.array([x, y])) < self.object_interaction_dist:
-                if type_gen == "food":
+                if type_gen == "food":  # and self._is_in_front(np.array([x, y]))
                     self.hunger += self.replenish_rate
                     self.food_consumed += 1
-                elif type_gen == "water":
+                elif type_gen == "water":  #  and self._is_in_front(np.array([x, y]))
                     self.thirst += self.replenish_rate
                     self.water_consumed += 1
                 elif type_gen == "heat":
@@ -566,11 +566,13 @@ class HomeostaticAntEnv(AntEnv, EzPickle):
         is_flipped = up_vector_z < 0.5
         is_height_invalid = z_pos < 0.2 or z_pos > 1.0
 
-        term_reason = 0  # Max episode...?
-        if limit_reached:
-            term_reason = 1  # homeostatic
-        elif is_flipped:
+        term_reason = 0
+        # Check flipped first
+        
+        if is_flipped:
             term_reason = 2  # flipped
+        elif limit_reached:
+            term_reason = 1  # limit reached
         elif is_height_invalid:
             term_reason = 3  # height
 
